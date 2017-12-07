@@ -1,5 +1,6 @@
 from collections import OrderedDict
 import os
+import csv
 import sys
 import sqlite3
 import inspect
@@ -74,10 +75,9 @@ class Sqlite(): # {{{
         print(query)
         print(data)
 
-    def dump(self):
-        print("dump() from caller: {}".format(inspect.stack()[1][3]))
-        #for i in self.query('SELECT * FROM todo order by todo'):
-        #    print(i)
+    def all_publicatons(self):
+        ''' Select all from publications '''
+        dd(self.query("SELECT kind,publicationDate,parent,firstSystemIdentifier,title FROM publications"))
 # }}}
 
 class Swiatowid():
@@ -85,9 +85,8 @@ class Swiatowid():
         self.json=Json()
         self._sqlite_init()
         institution="wibp.json"
-        self.articles=[]
         self.authors=OrderedDict()
-        self.authors_articles=[]
+        self.authors_publications=[]
         self._json2sql(institution)
 
 # }}}
@@ -98,16 +97,19 @@ class Swiatowid():
             pass
         self.s=Sqlite("swiatowid.sqlite")
 
-        self.articles_columns=['firstSystemIdentifier', 'title', 'publicationDate', 'journal' ]
-        self.s.query("CREATE TABLE articles({})".format(",".join(self.articles_columns)))
+        self.journals_columns=['issn', 'journal', 'points' ]
+        self.s.query("CREATE TABLE journals({})".format(",".join(self.journals_columns)))
+
+        self.publications_columns=['firstSystemIdentifier', 'title', 'kind', 'publicationDate', 'parent' ]
+        self.s.query("CREATE TABLE publications({})".format(",".join(self.publications_columns)))
 
         self.authors_columns=['pbnId', 'familyName', 'givenNames', 'affiliatedToUnit', 'employedInUnit' ]
-        self.s.query("CREATE TABLE authors({})".format(",".join(self.articles_columns)))
+        self.s.query("CREATE TABLE authors({})".format(",".join(self.publications_columns)))
 
-        self.authors_articles=['pbnId_author', 'firstSystemIdentifier_article' ]
-        self.s.query("CREATE TABLE authors_articles({})".format(",".join(self.authors_articles)))
+        self.authors_publications=['pbnId_author', 'firstSystemIdentifier_article' ]
+        self.s.query("CREATE TABLE authors_publications({})".format(",".join(self.authors_publications)))
 # }}}
-    def _get_issn_isbn(self,work):# {{{
+    def _get_issn(self,work):# {{{
         keys=work.keys()
         if "journal" in keys:
             if "issn" in work["journal"] and len(work["journal"]["issn"])>0:
@@ -126,30 +128,59 @@ class Swiatowid():
         return "err"
 
 # }}}
-    def _make_articles(self,a):# {{{
-        issn_isbn=self._get_issn_isbn(a)
-        self.articles.append(OrderedDict([ 
-            ('firstSystemIdentifier' , a['firstSystemIdentifier']) ,
-            ('title'                 , a['title'])                 ,
-            ('publicationDate'       , a['publicationDate'])       ,
-            ('journal'               , issn_isbn)
-            ])
-        )
-        dd(self.articles)
+    def _make_publications(self,a):# {{{
+        if a['kind']=='Article':
+            parent=a['journal']['issn'].strip()
+
+        elif a['kind']=='Book':
+            parent=a['isbn'].strip()
+
+        elif a['kind']=='Chapter':
+            parent=a['book']['isbn'].strip()
+
+        return (a['firstSystemIdentifier'] , a['title'] , a['kind'] , a['publicationDate'] , parent) 
 
 # }}}
     def _make_authors(self,a):# {{{
-        pass
+        if a['affiliatedToUnit']==True:
+            a['affiliatedToUnit']=1
+        else:
+            a['affiliatedToUnit']=0
+        if a['employedInUnit']==True:
+            a['employedInUnit']=1
+        else:
+            a['employedInUnit']=0
+
+        return (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])
 # }}}
-    def _make_authors_articles(self,a):# {{{
+    def _make_authors_publications(self,a):# {{{
         pass
 # }}}
     def _json2sql(self, institution):# {{{
+        publications=[]
+        authors=[]
         for a in self.json.read(institution):
-            self._make_articles(a)
-            self._make_authors(a)
-            self._make_authors_articles(a)
+            publications.append(self._make_publications(a))
+            for author in a['authors']:
+                authors.append(self._make_authors(author))
+            #self._make_authors_publications(a)
 
+        authors=list(set(authors))
+
+        self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?)', publications)
+        self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors)
+        self.s.all_publicatons()
+
+# }}}
+    def journals_csv2sql(self):# {{{
+        with open('journals.csv', 'r') as csvfile:
+            reader = csv.reader(csvfile, delimiter=';')
+            data=[]
+            for i in reader:
+                data.append([ i[0], int(i[1]), i[2] ])
+        self.s.executemany('INSERT INTO journals VALUES (?,?,?)', data)
+        #dd(self.s.query("select * from journals"))
 # }}}
 
 z=Swiatowid()
+z.journals_csv2sql()
