@@ -77,7 +77,20 @@ class Sqlite(): # {{{
 
     def all_publicatons(self):
         ''' Select all from publications '''
-        dd(self.query("SELECT kind,publicationDate,parent,firstSystemIdentifier,title FROM publications"))
+        dd(self.query("SELECT kind,publicationDate,parent,publicationId,title FROM publications"))
+
+    def all_authors(self):
+        ''' Select all from authors'''
+        dd(self.query("SELECT authorId,familyName,givenNames FROM authors"))
+
+    def all_authors_publications(self):
+        ''' Select all from authors_publications '''
+        dd(self.query("SELECT * FROM authors_publications"))
+
+    def all_v(self):
+        ''' Select all from authors_publications '''
+        dd(self.query("SELECT * FROM v")[0])
+
 # }}}
 
 class Swiatowid():
@@ -97,17 +110,12 @@ class Swiatowid():
             pass
         self.s=Sqlite("swiatowid.sqlite")
 
-        self.journals_columns=['issn', 'journal', 'points' ]
-        self.s.query("CREATE TABLE journals({})".format(",".join(self.journals_columns)))
+        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parent)")
+        self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
+        self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
+        self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
+        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
 
-        self.publications_columns=['firstSystemIdentifier', 'title', 'kind', 'publicationDate', 'parent' ]
-        self.s.query("CREATE TABLE publications({})".format(",".join(self.publications_columns)))
-
-        self.authors_columns=['pbnId', 'familyName', 'givenNames', 'affiliatedToUnit', 'employedInUnit' ]
-        self.s.query("CREATE TABLE authors({})".format(",".join(self.publications_columns)))
-
-        self.authors_publications=['pbnId_author', 'firstSystemIdentifier_article' ]
-        self.s.query("CREATE TABLE authors_publications({})".format(",".join(self.authors_publications)))
 # }}}
     def _get_issn(self,work):# {{{
         keys=work.keys()
@@ -128,7 +136,7 @@ class Swiatowid():
         return "err"
 
 # }}}
-    def _make_publications(self,a):# {{{
+    def _publication_record(self,a):# {{{
         if a['kind']=='Article':
             parent=a['journal']['issn'].strip()
 
@@ -141,7 +149,7 @@ class Swiatowid():
         return (a['firstSystemIdentifier'] , a['title'] , a['kind'] , a['publicationDate'] , parent) 
 
 # }}}
-    def _make_authors(self,a):# {{{
+    def _author_record(self,a):# {{{
         if a['affiliatedToUnit']==True:
             a['affiliatedToUnit']=1
         else:
@@ -151,25 +159,32 @@ class Swiatowid():
         else:
             a['employedInUnit']=0
 
-        return (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])
-# }}}
-    def _make_authors_publications(self,a):# {{{
-        pass
+        try:
+            return (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])
+        except:
+            raise Exception("Problem with this author", a)
 # }}}
     def _json2sql(self, institution):# {{{
         publications=[]
         authors=[]
-        for a in self.json.read(institution):
-            publications.append(self._make_publications(a))
-            for author in a['authors']:
-                authors.append(self._make_authors(author))
-            #self._make_authors_publications(a)
+        authors_publications=[]
 
-        authors=list(set(authors))
+        for json_record in self.json.read(institution):
+            p=self._publication_record(json_record)
+            publications.append(p)
+            for author in json_record['authors']:
+                a=self._author_record(author)
+                authors.append(a) 
+                if p[2]=='Article':
+                    authors_publications.append((a[0],p[0]))
 
         self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?)', publications)
-        self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors)
-        self.s.all_publicatons()
+        self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', set(authors))
+        self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
+        #self.s.all_publicatons()
+        #self.s.all_authors()
+        #self.s.all_authors_publications()
+
 
 # }}}
     def journals_csv2sql(self):# {{{
@@ -177,10 +192,11 @@ class Swiatowid():
             reader = csv.reader(csvfile, delimiter=';')
             data=[]
             for i in reader:
-                data.append([ i[0], int(i[1]), i[2] ])
-        self.s.executemany('INSERT INTO journals VALUES (?,?,?)', data)
+                data.append([ i[0], int(i[1]), i[2], i[3] ])
+        self.s.executemany('INSERT INTO journals VALUES (?,?,?,?)', data)
         #dd(self.s.query("select * from journals"))
 # }}}
 
 z=Swiatowid()
 z.journals_csv2sql()
+z.s.all_v()
