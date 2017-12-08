@@ -89,7 +89,7 @@ class Sqlite(): # {{{
 
     def all_v(self):
         ''' Select all from authors_publications '''
-        dd(self.query("SELECT * FROM v")[0])
+        dd(self.query("SELECT * FROM v"))
 
 # }}}
 
@@ -101,6 +101,8 @@ class Swiatowid():
         self.authors=OrderedDict()
         self.authors_publications=[]
         self._json2sql(institution)
+        self._journals_csv2sql()
+        self._plot_data()
 
 # }}}
     def _sqlite_init(self):# {{{
@@ -114,9 +116,18 @@ class Swiatowid():
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
         self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
         self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
-        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
+        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
+
 
 # }}}
+
+    def _plot_data(self):# {{{
+        plot_data=self.s.query("select familyName, givenNames, authorId,  sum(points) as points from v  group by familyName order by points DESC ")
+        self.json.write(plot_data,"plot_data.json")
+
+#}}}
+
+
     def _get_issn(self,work):# {{{
         keys=work.keys()
         if "journal" in keys:
@@ -187,7 +198,7 @@ class Swiatowid():
 
 
 # }}}
-    def journals_csv2sql(self):# {{{
+    def _journals_csv2sql(self):# {{{
         with open('journals.csv', 'r') as csvfile:
             reader = csv.reader(csvfile, delimiter=';')
             data=[]
@@ -198,5 +209,4 @@ class Swiatowid():
 # }}}
 
 z=Swiatowid()
-z.journals_csv2sql()
-z.s.all_v()
+#z.s.all_v()
