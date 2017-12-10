@@ -103,7 +103,7 @@ class Swiatowid():
         self._json2sql(institution)
         self._journals_csv2sql()
         self._plot_data()
-        self._authors_details()
+        #self._authors_details()
 
 # }}}
     def _sqlite_init(self):# {{{
@@ -117,7 +117,7 @@ class Swiatowid():
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
         self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
         self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
-        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
+        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.publicationId, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
 
 
 # }}}
@@ -138,25 +138,6 @@ class Swiatowid():
         self.json.write(authors_details, "authors_details.json")
 #}}}
 
-    def _get_issn(self,work):# {{{
-        keys=work.keys()
-        if "journal" in keys:
-            if "issn" in work["journal"] and len(work["journal"]["issn"])>0:
-                return work["journal"]["issn"].strip()
-
-        if "book" in keys:
-            if "isbn" in work["book"] and len(work["book"]["isbn"])>0 :
-                return work["book"]["isbn"].strip()
-
-        if "issn" in keys and len(work["issn"])>0 :
-            return work["issn"].strip()
-            
-        if "isbn" in keys and len(work["isbn"])>0 :
-            return work["isbn"].strip()
-            
-        return "err"
-
-# }}}
     def _publication_record(self,a):# {{{
         if a['kind']=='Article':
             parent=a['journal']['issn'].strip()
@@ -167,7 +148,7 @@ class Swiatowid():
         elif a['kind']=='Chapter':
             parent=a['book']['isbn'].strip()
 
-        return (a['firstSystemIdentifier'] , a['title'] , a['kind'] , a['publicationDate'] , parent) 
+        return [aa.strip() for aa in (a['firstSystemIdentifier'] , a['title'] , a['kind'] , a['publicationDate'] , parent)] 
 
 # }}}
     def _author_record(self,a):# {{{
@@ -181,7 +162,7 @@ class Swiatowid():
             a['employedInUnit']=0
 
         try:
-            return (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])
+            return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
         except:
             raise Exception("Problem with this author", a)
 # }}}
@@ -195,7 +176,7 @@ class Swiatowid():
             publications.append(p)
             for author in json_record['authors']:
                 a=self._author_record(author)
-                authors.append(a) 
+                authors.append(tuple(a))
                 if p[2]=='Article':
                     authors_publications.append((a[0],p[0]))
 
@@ -219,4 +200,5 @@ class Swiatowid():
 # }}}
 
 z=Swiatowid()
-z.s.all_v()
+#z.s.all_v()
+#z.s.all_authors()
