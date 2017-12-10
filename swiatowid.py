@@ -103,6 +103,7 @@ class Swiatowid():
         self._json2sql(institution)
         self._journals_csv2sql()
         self._plot_data()
+        self._authors_details()
 
 # }}}
     def _sqlite_init(self):# {{{
@@ -120,13 +121,22 @@ class Swiatowid():
 
 
 # }}}
-
     def _plot_data(self):# {{{
         plot_data=self.s.query("select familyName, givenNames, authorId,  sum(points) as points from v  group by familyName order by points DESC ")
         self.json.write(plot_data,"plot_data.json")
 
 #}}}
-
+    def _authors_details(self):# {{{
+        authors_details=OrderedDict()
+        ids=[]
+        for i in self.s.query("SELECT DISTINCT authorId,familyName,givenNames FROM v"):
+            authors_details[i['authorId']]=OrderedDict()
+            authors_details[i['authorId']]['meta']=(i['familyName'], i['givenNames'])
+            authors_details[i['authorId']]['works']=[]
+            for j in self.s.query("SELECT letter,year,points,title,journal FROM v WHERE authorId=? ORDER BY year", (i['authorId'],)):
+                authors_details[i['authorId']]['works'].append(j)
+        self.json.write(authors_details, "authors_details.json")
+#}}}
 
     def _get_issn(self,work):# {{{
         keys=work.keys()
@@ -209,4 +219,4 @@ class Swiatowid():
 # }}}
 
 z=Swiatowid()
-#z.s.all_v()
+z.s.all_v()
