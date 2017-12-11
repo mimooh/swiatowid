@@ -77,7 +77,7 @@ class Sqlite(): # {{{
 
     def all_publicatons(self):
         ''' Select all from publications '''
-        dd(self.query("SELECT kind,publicationDate,parent,publicationId,title FROM publications"))
+        dd(self.query("SELECT kind,year,pointsShare,parent,publicationId,title FROM publications"))
 
     def all_authors(self):
         ''' Select all from authors'''
@@ -86,6 +86,9 @@ class Sqlite(): # {{{
     def all_authors_publications(self):
         ''' Select all from authors_publications '''
         dd(self.query("SELECT * FROM authors_publications"))
+
+    def all_journals(self):
+        dd(self.query("SELECT * FROM journals"))
 
     def all_v(self):
         ''' Select all from authors_publications '''
@@ -98,10 +101,10 @@ class Swiatowid():
         self.json=Json()
         self._sqlite_init()
         institution="wibp.json"
+        self._journals_csv2sql()
         self.authors=OrderedDict()
         self.authors_publications=[]
         self._json2sql(institution)
-        self._journals_csv2sql()
         self._plot_data()
         #self._authors_details()
 
@@ -113,16 +116,26 @@ class Swiatowid():
             pass
         self.s=Sqlite("swiatowid.sqlite")
 
-        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parent)")
+        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parent, pointsShare)")
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
         self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
         self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
-        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.publicationId, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
+        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
 
 
 # }}}
+
+    def _journals_csv2sql(self):# {{{
+        with open('journals.csv', 'r') as csvfile:
+            reader = csv.reader(csvfile, delimiter=';')
+            data=[]
+            for i in reader:
+                data.append([ i[0], int(i[1]), i[2], i[3] ])
+        self.s.executemany('INSERT INTO journals VALUES (?,?,?,?)', data)
+        #dd(self.s.query("select * from journals"))
+# }}}
     def _plot_data(self):# {{{
-        plot_data=self.s.query("select familyName, givenNames, authorId,  sum(points) as points from v  group by familyName order by points DESC ")
+        plot_data=self.s.query("select familyName, givenNames, authorId, round(sum(pointsShare),2) as pointsShare from v group by familyName order by pointsShare DESC ")
         self.json.write(plot_data,"plot_data.json")
 
 #}}}
@@ -139,6 +152,11 @@ class Swiatowid():
 #}}}
 
     def _publication_record(self,a):# {{{
+        ''' 
+        Since PBN doesn't report the share of an author in the article, we take
+        1/number_of_authors as a share
+        '''
+
         if a['kind']=='Article':
             parent=a['journal']['issn'].strip()
 
@@ -148,7 +166,32 @@ class Swiatowid():
         elif a['kind']=='Chapter':
             parent=a['book']['isbn'].strip()
 
-        return [aa.strip() for aa in (a['firstSystemIdentifier'] , a['title'] , a['kind'] , a['publicationDate'] , parent)] 
+        try:
+            points=self.s.query("SELECT points FROM journals where issn=?", (parent,))[0]['points']
+        except:
+            points=0
+
+        z=[aa.strip() for aa in (a['firstSystemIdentifier'] , a['title'] , a['kind'] , a['publicationDate'] , parent) ]
+
+        number_of_authors=self._calc_number_of_authors(a)
+        z.append(points*round(1/number_of_authors,2))
+        return z
+
+# }}}
+    def _calc_number_of_authors(self,json_record):# {{{
+
+        if len(json_record['authors']) < 1:
+            count_authors=1
+        else:
+            count_authors=len(json_record['authors'])
+
+        try:
+            count_contributors=json_record['otherContributors']
+        except:
+            count_contributors=0
+
+        return count_authors+count_contributors
+
 
 # }}}
     def _author_record(self,a):# {{{
@@ -180,23 +223,14 @@ class Swiatowid():
                 if p[2]=='Article':
                     authors_publications.append((a[0],p[0]))
 
-        self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?)', publications)
+        self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?)', publications)
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', set(authors))
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
         #self.s.all_publicatons()
-        #self.s.all_authors()
+        #self.s.all_journals()
         #self.s.all_authors_publications()
 
 
-# }}}
-    def _journals_csv2sql(self):# {{{
-        with open('journals.csv', 'r') as csvfile:
-            reader = csv.reader(csvfile, delimiter=';')
-            data=[]
-            for i in reader:
-                data.append([ i[0], int(i[1]), i[2], i[3] ])
-        self.s.executemany('INSERT INTO journals VALUES (?,?,?,?)', data)
-        #dd(self.s.query("select * from journals"))
 # }}}
 
 z=Swiatowid()
