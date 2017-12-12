@@ -124,6 +124,21 @@ class Swiatowid():
 
 
 # }}}
+    def calculate_shares(self,authors): # {{{
+        if authors==1:
+            return [1]
+
+        mean=float(1/authors)
+        y_min=mean*0.8
+        y_max=mean*1.2
+        range_=(y_max-y_min)
+        delta=range_/(authors-1)
+
+        x=[]
+        for i in range(authors):
+            x.append(round(y_min+(delta*i),2))
+        return x[::-1]
+# }}}
 
     def _journals_csv2sql(self):# {{{
         with open('journals.csv', 'r') as csvfile:
@@ -210,8 +225,13 @@ class Swiatowid():
             raise Exception("Problem with this author", a)
 # }}}
     def _json2sql(self, institution):# {{{
+        ''' 
+        Need to be taken under account:
+        PBN data contains leading/ending spaces: "issn": " 1234" 
+        PBN data contains such authors: "familyName": "Kowalski", "givenNames": "Jan" and "familyName": "Jan", "givenNames": "Kowalski" 
+        '''
         publications=[]
-        authors=[]
+        authors=OrderedDict()
         authors_publications=[]
 
         for json_record in self.json.read(institution):
@@ -219,20 +239,20 @@ class Swiatowid():
             publications.append(p)
             for author in json_record['authors']:
                 a=self._author_record(author)
-                authors.append(tuple(a))
+                authors[a[0]]=tuple(a)
                 if p[2]=='Article':
                     authors_publications.append((a[0],p[0]))
-
         self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?)', publications)
-        self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', set(authors))
+        self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
-        #self.s.all_publicatons()
-        #self.s.all_journals()
-        #self.s.all_authors_publications()
 
 
 # }}}
 
 z=Swiatowid()
+#print(z.calculate_shares(5))
 #z.s.all_v()
+#z.s.all_publicatons()
+#z.s.all_journals()
+#z.s.all_authors_publications()
 #z.s.all_authors()

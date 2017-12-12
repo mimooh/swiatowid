@@ -1,0 +1,48 @@
+body { 
+    font-family: 'Roboto', 'Sans';
+    color: #aaa;
+    background-color: #333;
+    margin:0px;
+} 
+
+author { 
+    display: inline;
+    padding: 4px;
+    border: 1px solid #444;
+    cursor: default;
+    user-select: none;
+}
+
+author:hover { 
+    opacity: 0.5;
+}
+
+page { 
+    text-align: center;
+    padding:10px;
+    font-size: 15px;
+    background-color: #800;
+    color: #fff;
+    margin-bottom: 20px;
+    display: block;
+    width:100%;
+}
+
+td { 
+    padding: 4px;
+    font-size: 13px;
+}
+
+author-details {
+    z-index:200;
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    padding: 20px;
+    opacity: 0.8;
+    background: #112;
+    border: 1px solid #444;
+    cursor: default;
+    user-select: none;
+    display: none; 
+}

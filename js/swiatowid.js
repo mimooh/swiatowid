@@ -2,6 +2,11 @@ $.getJSON("plot_data.json", function(authors) {
 	plot(authors);
 });
 
+$("body").on("click", "author-details",function() {
+    $(this).fadeOut(); 
+});
+
+
 $("body").on("click", "author",function() {
 	console.log($(this).attr('id'));
 	$.ajax({
@@ -11,6 +16,8 @@ $("body").on("click", "author",function() {
 	})
 	.done(function(data) {
 		console.log(data);
+        $("author-details").html("huhu");
+        $("author-details").fadeIn();
 	});
 });
 
