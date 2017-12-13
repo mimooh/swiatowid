@@ -77,7 +77,7 @@ class Sqlite(): # {{{
 
     def all_publicatons(self):
         ''' Select all from publications '''
-        dd(self.query("SELECT kind,year,pointsShare,parent,publicationId,title FROM publications"))
+        dd(self.query("SELECT * FROM publications"))
 
     def all_authors(self):
         ''' Select all from authors'''
@@ -116,11 +116,11 @@ class Swiatowid():
             pass
         self.s=Sqlite("swiatowid.sqlite")
 
-        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parent, pointsShare)")
+        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parent, authors, pointsShare)")
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
         self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
         self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
-        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
+        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
 
 
 # }}}
@@ -150,7 +150,7 @@ class Swiatowid():
         #dd(self.s.query("select * from journals"))
 # }}}
     def _plot_data(self):# {{{
-        plot_data=self.s.query("select familyName, givenNames, authorId, round(sum(pointsShare),2) as pointsShare from v group by familyName order by pointsShare DESC ")
+        plot_data=self.s.query("SELECT familyName, givenNames, authorId, round(sum(pointsShare),2) AS pointsShare FROM v GROUP BY familyName ORDER BY pointsShare DESC ")
         self.json.write(plot_data,"plot_data.json")
 
 #}}}
@@ -165,7 +165,19 @@ class Swiatowid():
                 authors_details[i['authorId']]['works'].append(j)
         self.json.write(authors_details, "authors_details.json")
 #}}}
+    def _authors_as_string(self,a):# {{{
+        ''' For ajax listing, compact info author1,author2,+3 '''
+        authors=[]
+        for i in a['authors']:
+            authors.append(i['familyName'])
+        try:
+            if a['otherContributors'] > 0:
+                authors.append("+"+str(a['otherContributors']))
+        except:
+            pass
+        return ",".join(authors)
 
+# }}}
     def _publication_record(self,a):# {{{
         ''' 
         Since PBN doesn't report the share of an author in the article, we take
@@ -186,10 +198,10 @@ class Swiatowid():
         except:
             points=0
 
-        z=[aa.strip() for aa in (a['firstSystemIdentifier'] , a['title'] , a['kind'] , a['publicationDate'] , parent) ]
+        z=[aa.strip() for aa in (a['firstSystemIdentifier'] , " ".join(a['title'].split()[0:5])+" ..." , a['kind'] , a['publicationDate'] , parent, self._authors_as_string(a)) ]
 
         number_of_authors=self._calc_number_of_authors(a)
-        z.append(points*round(1/number_of_authors,2))
+        z.append("{:.2f}".format(points * 1/number_of_authors))
         return z
 
 # }}}
@@ -242,7 +254,7 @@ class Swiatowid():
                 authors[a[0]]=tuple(a)
                 if p[2]=='Article':
                     authors_publications.append((a[0],p[0]))
-        self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?)', publications)
+        self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?)', publications)
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
 
