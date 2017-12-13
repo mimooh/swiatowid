@@ -166,15 +166,11 @@ class Swiatowid():
         self.json.write(authors_details, "authors_details.json")
 #}}}
     def _authors_as_string(self,a):# {{{
-        ''' For ajax listing, compact info author1,author2,+3 '''
+        ''' For authors_details, compact info: "author1,author2" '''
         authors=[]
         for i in a['authors']:
             authors.append(i['familyName'])
-        try:
-            if a['otherContributors'] > 0:
-                authors.append("+"+str(a['otherContributors']))
-        except:
-            pass
+
         return ",".join(authors)
 
 # }}}
@@ -206,18 +202,19 @@ class Swiatowid():
 
 # }}}
     def _calc_number_of_authors(self,json_record):# {{{
+        ''' 
+        We will share the points for the article amongst the authors.
+        OtherContributors are from another institution and they don't count: if
+        the article is worth 15 points, then each institutions shares their 15
+        amongst their authors 
+        '''
 
         if len(json_record['authors']) < 1:
             count_authors=1
         else:
             count_authors=len(json_record['authors'])
 
-        try:
-            count_contributors=json_record['otherContributors']
-        except:
-            count_contributors=0
-
-        return count_authors+count_contributors
+        return count_authors
 
 
 # }}}
