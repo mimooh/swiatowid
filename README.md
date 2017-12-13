@@ -5,3 +5,5 @@ is fetched from PBN/POL-on. The final tables and plots are presented on the web.
 
 Many thanks to Piotr Chodnicki from https://punktacjaczasopism.pl for
 converting the mnisw pdfs with journals scoring into a database. 
+
+Demo of the running system: http://www.inf.sgsp.edu.pl/~mimooh/swiatowid/plot.html
