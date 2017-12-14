@@ -107,7 +107,6 @@ class Swiatowid():
         self._json2sql(institution)
         self._anonymize_authors()
         self._plot_data()
-        #self._authors_details()
 
 # }}}
     def _sqlite_init(self):# {{{
@@ -168,17 +167,6 @@ class Swiatowid():
         plot_data=self.s.query("SELECT familyName, givenNames, authorId, round(sum(pointsShare),2) AS pointsShare FROM v GROUP BY familyName ORDER BY pointsShare DESC ")
         self.json.write(plot_data,"plot_data.json")
 
-#}}}
-    def _authors_details(self):# {{{
-        authors_details=OrderedDict()
-        ids=[]
-        for i in self.s.query("SELECT DISTINCT authorId,familyName,givenNames FROM v"):
-            authors_details[i['authorId']]=OrderedDict()
-            authors_details[i['authorId']]['meta']=(i['familyName'], i['givenNames'])
-            authors_details[i['authorId']]['works']=[]
-            for j in self.s.query("SELECT letter,year,points,title,journal FROM v WHERE authorId=? ORDER BY year", (i['authorId'],)):
-                authors_details[i['authorId']]['works'].append(j)
-        self.json.write(authors_details, "authors_details.json")
 #}}}
     def _authors_as_string(self,a):# {{{
         ''' For authors_details, compact info: "author1,author2" '''
@@ -278,7 +266,7 @@ class Swiatowid():
 
 z=Swiatowid()
 #print(z.calculate_shares(5))
-z.s.all_v()
+#z.s.all_v()
 #z.s.all_publicatons()
 #z.s.all_journals()
 #z.s.all_authors_publications()
