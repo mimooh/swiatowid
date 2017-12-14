@@ -38,13 +38,13 @@ td {
 author-details {
     z-index:200;
     overflow-y: scroll;
-    width: 95%;
+    width: 98%;
     height: 90%;
     position: fixed;
     top: 20px;
     left: 20px;
     padding: 20px;
-    opacity: 0.95;
+    opacity: 0.97;
     background: #222;
     border: 1px solid #444;
     cursor: default;
