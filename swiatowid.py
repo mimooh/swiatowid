@@ -105,6 +105,7 @@ class Swiatowid():
         self.authors=OrderedDict()
         self.authors_publications=[]
         self._json2sql(institution)
+        self._anonymize_authors()
         self._plot_data()
         #self._authors_details()
 
@@ -125,6 +126,16 @@ class Swiatowid():
 
 # }}}
     def calculate_shares(self,authors): # {{{
+        ''' 
+        A proposition. The shares are calculated in such a fashion:
+        Number of authors: 1, shares: 100%
+        Number of authors: 2, shares: 60% vs 40%
+        Number of authors: 3, shares: 40% vs 33% vs 27%
+        ...
+
+        Complete, but currently not used
+        '''
+
         if authors==1:
             return [1]
 
@@ -149,6 +160,10 @@ class Swiatowid():
         self.s.executemany('INSERT INTO journals VALUES (?,?,?,?)', data)
         #dd(self.s.query("select * from journals"))
 # }}}
+    def _anonymize_authors(self):# {{{
+        ''' Anonymize for now '''
+        self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
+# }}}
     def _plot_data(self):# {{{
         plot_data=self.s.query("SELECT familyName, givenNames, authorId, round(sum(pointsShare),2) AS pointsShare FROM v GROUP BY familyName ORDER BY pointsShare DESC ")
         self.json.write(plot_data,"plot_data.json")
@@ -167,10 +182,13 @@ class Swiatowid():
 #}}}
     def _authors_as_string(self,a):# {{{
         ''' For authors_details, compact info: "author1,author2" '''
+        return "autor1,autor2..." # anonymization, for now
+
         authors=[]
         for i in a['authors']:
             authors.append(i['familyName'])
 
+        return "autor1,autor2..." # anonymization, for now
         return ",".join(authors)
 
 # }}}
@@ -260,7 +278,7 @@ class Swiatowid():
 
 z=Swiatowid()
 #print(z.calculate_shares(5))
-#z.s.all_v()
+z.s.all_v()
 #z.s.all_publicatons()
 #z.s.all_journals()
 #z.s.all_authors_publications()
