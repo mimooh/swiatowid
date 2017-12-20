@@ -91,7 +91,6 @@ class Sqlite(): # {{{
         dd(self.query("SELECT * FROM journals"))
 
     def all_v(self):
-        ''' Select all from authors_publications '''
         dd(self.query("SELECT * FROM v"))
 
 # }}}
@@ -105,7 +104,7 @@ class Swiatowid():
         self.authors=OrderedDict()
         self.authors_publications=[]
         self._json2sql(institution)
-        self._anonymize_authors()
+        #self._anonymize_authors()
         self._plot_data()
 
 # }}}
@@ -116,11 +115,12 @@ class Swiatowid():
             pass
         self.s=Sqlite("swiatowid.sqlite")
 
-        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parent, authors, pointsShare)")
+        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parentId, parentTitle, authors, pointsShare)")
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
         self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
         self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
-        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parent AND p.kind='Article';")
+        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parentId AND p.kind='Article';")
+        #self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.kind, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND (j.issn=p.parentId OR p.kind='Chapter' OR p.kind='Book') ;")
 
 
 # }}}
@@ -170,13 +170,12 @@ class Swiatowid():
 #}}}
     def _authors_as_string(self,a):# {{{
         ''' For authors_details, compact info: "author1,author2" '''
-        return "autor1,autor2..." # anonymization, for now
+        #return "autor1,autor2..." # anonymization, for now
 
         authors=[]
         for i in a['authors']:
             authors.append(i['familyName'])
 
-        return "autor1,autor2..." # anonymization, for now
         return ",".join(authors)
 
 # }}}
@@ -187,20 +186,24 @@ class Swiatowid():
         '''
 
         if a['kind']=='Article':
-            parent=a['journal']['issn'].strip()
-
-        elif a['kind']=='Book':
-            parent=a['isbn'].strip()
+            parentId=a['journal']['issn'].strip()
+            parentTitle=a['journal']['title']['value'].strip()
 
         elif a['kind']=='Chapter':
-            parent=a['book']['isbn'].strip()
+            parentId=a['book']['isbn'].strip()
+            parentTitle=a['book']['title'].strip()
+
+        elif a['kind']=='Book':
+            parentId=a['isbn'].strip()
+            parentTitle=a['title'].strip()
+
 
         try:
-            points=self.s.query("SELECT points FROM journals where issn=?", (parent,))[0]['points']
+            points=self.s.query("SELECT points FROM journals where issn=?", (parentId,))[0]['points']
         except:
             points=0
 
-        z=[aa.strip() for aa in (a['firstSystemIdentifier'] , " ".join(a['title'].split()[0:5])+" ..." , a['kind'] , a['publicationDate'] , parent, self._authors_as_string(a)) ]
+        z=[aa.strip() for aa in (a['firstSystemIdentifier'] , " ".join(a['title'].split()[0:5])+" ..." , a['kind'] , a['publicationDate'] , parentId, parentTitle, self._authors_as_string(a)) ]
 
         number_of_authors=self._calc_number_of_authors(a)
         z.append("{:.2f}".format(points * 1/number_of_authors))
@@ -257,7 +260,7 @@ class Swiatowid():
                 authors[a[0]]=tuple(a)
                 if p[2]=='Article':
                     authors_publications.append((a[0],p[0]))
-        self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?)', publications)
+        self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?,?)', publications)
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
 
@@ -267,7 +270,7 @@ class Swiatowid():
 z=Swiatowid()
 #print(z.calculate_shares(5))
 #z.s.all_v()
-#z.s.all_publicatons()
+z.s.all_publicatons()
 #z.s.all_journals()
 #z.s.all_authors_publications()
 #z.s.all_authors()
