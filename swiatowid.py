@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import os
 import csv
+import argparse
 import sys
 import sqlite3
 import inspect
@@ -97,86 +98,72 @@ class Sqlite(): # {{{
 
 class Swiatowid():
     def __init__(self):# {{{
+        self.s=Sqlite("swiatowid.sqlite")
+        self.anonymize=0
         self.json=Json()
-        self._sqlite_init()
-        institution="wibp.json"
-        self._journals_csv2sql()
-        self.authors=OrderedDict()
-        self.authors_publications=[]
-        self._json2sql(institution)
-        #self._anonymize_authors()
+        self._argparse()
+        self._main()
         self._plot_data()
 
 # }}}
-    def _sqlite_init(self):# {{{
-        try:
-            os.remove("swiatowid.sqlite")
-        except: 
-            pass
-        self.s=Sqlite("swiatowid.sqlite")
+    def _argparse(self):# {{{
+        parser = argparse.ArgumentParser(description='Options for swiatowid')
 
-        self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parentId, parentTitle, authors, pointsShare)")
-        self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
-        self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
-        self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
-        self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parentId AND p.kind='Article';")
-        #self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.kind, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND (j.issn=p.parentId OR p.kind='Chapter' OR p.kind='Book') ;")
+        parser.add_argument('-a' , help="Anonymize authors"                   , required=False , action='store_true')
+        parser.add_argument('-p' , help="PBN API's json for your institution" , required=False , type=str             , default='wibp.json')
 
+        args = parser.parse_args()
 
+        if args.a:
+            self.anonymize=1
+        if args.p:
+            self.institution=args.p
 # }}}
-    def calculate_shares(self,authors): # {{{
+    def _sqlite_init(self):# {{{
         ''' 
-        A proposition. The shares are calculated in such a fashion:
-        Number of authors: 1, shares: 100%
-        Number of authors: 2, shares: 60% vs 40%
-        Number of authors: 3, shares: 40% vs 33% vs 27%
-        ...
-
-        Complete, but currently not used
+        Try to create the tables. Sqlite will fail if they exist, so we just hide the error messages under try:
+        Always delete data from the tables. 
+        Don't clear authors_shares, since we are the only db for this data.
         '''
 
-        if authors==1:
-            return [1]
+        try:
+            self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parentId, parentTitle, authors, pointsShare)")
+            self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
+            self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
+            self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
+            self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parentId AND p.kind='Article';")
+            self.s.query("CREATE TABLE authors_shares(author_id, publication_id, share)")
+            #self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.kind, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND (j.issn=p.parentId OR p.kind='Chapter' OR p.kind='Book') ;")
+        except: 
+            pass
+        self.s.query("DELETE FROM publications")
+        self.s.query("DELETE FROM authors")
+        self.s.query("DELETE FROM authors_publications")
+        self.s.query("DELETE FROM journals")
 
-        mean=float(1/authors)
-        y_min=mean*0.8
-        y_max=mean*1.2
-        range_=(y_max-y_min)
-        delta=range_/(authors-1)
 
-        x=[]
-        for i in range(authors):
-            x.append(round(y_min+(delta*i),2))
-        return x[::-1]
 # }}}
+    def _build_journals_db(self):# {{{
+        ''' Import punktacjaczasopism.pl database '''
 
-    def _journals_csv2sql(self):# {{{
         with open('journals.csv', 'r') as csvfile:
             reader = csv.reader(csvfile, delimiter=';')
             data=[]
             for i in reader:
                 data.append([ i[0], int(i[1]), i[2], i[3] ])
         self.s.executemany('INSERT INTO journals VALUES (?,?,?,?)', data)
-        #dd(self.s.query("select * from journals"))
 # }}}
-    def _anonymize_authors(self):# {{{
-        ''' Anonymize for now '''
-        self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
-# }}}
-    def _plot_data(self):# {{{
-        plot_data=self.s.query("SELECT familyName, givenNames, authorId, round(sum(pointsShare),2) AS pointsShare FROM v GROUP BY familyName ORDER BY pointsShare DESC ")
-        self.json.write(plot_data,"plot_data.json")
-
-#}}}
     def _authors_as_string(self,a):# {{{
         ''' For authors_details, compact info: "author1,author2" '''
-        #return "autor1,autor2..." # anonymization, for now
 
-        authors=[]
-        for i in a['authors']:
-            authors.append(i['familyName'])
+        if self.anonymize==1:
+            return "autor1,autor2..." # anonymization, for now
+        else:
+            authors=[]
+            for i in a['authors']:
+                authors.append(i['familyName'])
 
-        return ",".join(authors)
+            return ",".join(authors)
 
 # }}}
     def _publication_record(self,a):# {{{
@@ -242,17 +229,21 @@ class Swiatowid():
         except:
             raise Exception("Problem with this author", a)
 # }}}
-    def _json2sql(self, institution):# {{{
+    def _main(self):# {{{
         ''' 
         Need to be taken under account:
         PBN data contains leading/ending spaces: "issn": " 1234" 
         PBN data contains such authors: "familyName": "Kowalski", "givenNames": "Jan" and "familyName": "Jan", "givenNames": "Kowalski" 
         '''
+
+        self._sqlite_init()
+        self._build_journals_db()
+
         publications=[]
         authors=OrderedDict()
         authors_publications=[]
 
-        for json_record in self.json.read(institution):
+        for json_record in self.json.read(self.institution):
             p=self._publication_record(json_record)
             publications.append(p)
             for author in json_record['authors']:
@@ -264,11 +255,17 @@ class Swiatowid():
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
 
+        if self.anonymize==1:
+            self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
+# }}}
+    def _plot_data(self):# {{{
+        plot_data=self.s.query("SELECT familyName, givenNames, authorId, round(sum(pointsShare),2) AS pointsShare FROM v GROUP BY familyName ORDER BY pointsShare DESC ")
+        self.json.write(plot_data,"plot_data.json")
+#}}}
 
 # }}}
 
 z=Swiatowid()
-#print(z.calculate_shares(5))
 #z.s.all_v()
 z.s.all_publicatons()
 #z.s.all_journals()
