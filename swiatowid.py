@@ -76,22 +76,19 @@ class Sqlite(): # {{{
         print(query)
         print(data)
 
-    def all_publicatons(self):
-        ''' Select all from publications '''
+    def select_publicatons(self):
         dd(self.query("SELECT * FROM publications"))
 
-    def all_authors(self):
-        ''' Select all from authors'''
+    def select_authors(self):
         dd(self.query("SELECT authorId,familyName,givenNames FROM authors"))
 
-    def all_authors_publications(self):
-        ''' Select all from authors_publications '''
+    def select_authors_publications(self):
         dd(self.query("SELECT * FROM authors_publications"))
 
-    def all_journals(self):
+    def select_journals(self):
         dd(self.query("SELECT * FROM journals"))
 
-    def all_v(self):
+    def select_v(self):
         dd(self.query("SELECT * FROM v"))
 
 # }}}
@@ -121,9 +118,8 @@ class Swiatowid():
 # }}}
     def _sqlite_init(self):# {{{
         ''' 
-        Try to create the tables. Sqlite will fail if they exist, so we just hide the error messages under try:
-        Always delete data from the tables. 
-        Don't clear authors_shares, since we are the only db for this data.
+        Try to create the tables. Sqlite will fail if they exist, so we just
+        hide the error messages under 'try' Always delete data from the tables.
         '''
 
         try:
@@ -132,7 +128,6 @@ class Swiatowid():
             self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
             self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
             self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND j.issn=p.parentId AND p.kind='Article';")
-            self.s.query("CREATE TABLE authors_shares(author_id, publication_id, share)")
             #self.s.query("CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.pointsShare, p.publicationId, p.title, p.kind, p.year, p.authors, j.letter, j.points, j.journal FROM journals j, authors a , publications p , authors_publications ap WHERE ap.author_id=a.authorId AND ap.publication_id=p.publicationId AND (j.issn=p.parentId OR p.kind='Chapter' OR p.kind='Book') ;")
         except: 
             pass
@@ -140,7 +135,6 @@ class Swiatowid():
         self.s.query("DELETE FROM authors")
         self.s.query("DELETE FROM authors_publications")
         self.s.query("DELETE FROM journals")
-
 
 # }}}
     def _build_journals_db(self):# {{{
@@ -166,10 +160,24 @@ class Swiatowid():
             return ",".join(authors)
 
 # }}}
+    def _shorten_title(self, title):# {{{
+        ''' Title will have max 5 words '''
+        words=title.split()
+        short=" ".join(words[0:5])
+        if len(words) > 5:
+            short+=" ..."
+        return short
+# }}}
     def _publication_record(self,a):# {{{
         ''' 
+        author's pointsShare = points for the article
+
+        We could easily:
         Since PBN doesn't report the share of an author in the article, we take
-        1/number_of_authors as a share
+        1/number_of_authors as a share. 
+
+        Best would be to have a table with share of each author, but it
+        complicates things. 
         '''
 
         if a['kind']=='Article':
@@ -184,21 +192,28 @@ class Swiatowid():
             parentId=a['isbn'].strip()
             parentTitle=a['title'].strip()
 
+        articleTitle=self._shorten_title(a['title'])
+        parentTitle=self._shorten_title(parentTitle)
 
         try:
             points=self.s.query("SELECT points FROM journals where issn=?", (parentId,))[0]['points']
         except:
             points=0
 
-        z=[aa.strip() for aa in (a['firstSystemIdentifier'] , " ".join(a['title'].split()[0:5])+" ..." , a['kind'] , a['publicationDate'] , parentId, parentTitle, self._authors_as_string(a)) ]
+        #number_of_authors=self._calc_number_of_authors(a)
+        #pointsShare="{:.2f}".format(points * 1/number_of_authors)
+        pointsShare="{:.2f}".format(points)
 
-        number_of_authors=self._calc_number_of_authors(a)
-        z.append("{:.2f}".format(points * 1/number_of_authors))
+        z=[aa.strip() for aa in (a['firstSystemIdentifier'] , articleTitle , a['kind'] , a['publicationDate'] , parentId, parentTitle, self._authors_as_string(a), pointsShare) ]
+
         return z
 
 # }}}
     def _calc_number_of_authors(self,json_record):# {{{
         ''' 
+        We just go with stright pointsShare = points
+
+        Obsolete: 
         We will share the points for the article amongst the authors.
         OtherContributors are from another institution and they don't count: if
         the article is worth 15 points, then each institutions shares their 15
@@ -249,8 +264,7 @@ class Swiatowid():
             for author in json_record['authors']:
                 a=self._author_record(author)
                 authors[a[0]]=tuple(a)
-                if p[2]=='Article':
-                    authors_publications.append((a[0],p[0]))
+                authors_publications.append((a[0],p[0]))
         self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?,?)', publications)
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
@@ -266,8 +280,8 @@ class Swiatowid():
 # }}}
 
 z=Swiatowid()
-#z.s.all_v()
-z.s.all_publicatons()
-#z.s.all_journals()
-#z.s.all_authors_publications()
-#z.s.all_authors()
+z.s.select_v()
+#z.s.select_publicatons()
+#z.s.select_journals()
+#z.s.select_authors_publications()
+#z.s.select_authors()
