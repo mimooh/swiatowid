@@ -265,6 +265,7 @@ class Swiatowid():
                 a=self._author_record(author)
                 authors[a[0]]=tuple(a)
                 authors_publications.append((a[0],p[0]))
+
         self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?,?)', publications)
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
@@ -274,13 +275,37 @@ class Swiatowid():
 # }}}
     def _plot_data(self):# {{{
         plot_data=self.s.query("SELECT familyName, givenNames, authorId, round(sum(pointsShare),2) AS pointsShare FROM v GROUP BY familyName ORDER BY pointsShare DESC ")
-        self.json.write(plot_data,"plot_data.json")
+        h=[]
+        for i,j in enumerate(plot_data):
+            record=[]
+            record.append('\n\t\t<tr>')
+            record.append('<td>{}'.format(i+1))
+            record.append('<td><author id={}>{} {}</author>'.format(j['authorId'], j['familyName'], j['givenNames']))
+            record.append('<td>{}'.format(j['pointsShare']))
+            record.append('<td><svg width="1000" height="20" id=svg{}>'.format(i+1))
+            record.append('<rect y="0" x="0" height="20" width="{}" style="color:#000000; opacity:0.8; fill:#004488; stroke:#0088ff; stroke-width:1" />'.format(j['pointsShare']))
+            record.append('</svg>')
+            h.append(''.join(record))
+            
+
+        with open("plot.html", "w") as f: 
+            f.write('''<HTML><HEAD>
+<META http-equiv=Content-Type content='text/html; charset=utf-8' />
+<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
+<LINK rel='stylesheet' type='text/css' href='css.css'>
+<script src="js/jquery.js"></script>
+</HEAD>
+<BODY>
+<page> <h1>SGSP okresie 2011-2017</h1> </page>
+    <table id=plot_table> '''+"".join(h)+'''</table>
+<author-details></author-details>
+<script src="js/swiatowid.js"></script>
+</html>''')
 #}}}
 
-# }}}
 
 z=Swiatowid()
-z.s.select_v()
+#z.s.select_v()
 #z.s.select_publicatons()
 #z.s.select_journals()
 #z.s.select_authors_publications()
