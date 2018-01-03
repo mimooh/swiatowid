@@ -1,7 +1,6 @@
 # swiatowid
 System for comparing the scores of institution's authors in the field of
-scientific publications. The data is fetched from PBN/POL-on. The final tables
-and plots are presented on the web.
+scientific publications. The data is fetched from <a href=https://pbn-ms.opi.org.pl/pbn-report-web/api/index.html>PBN's json/institution_id</a>. The final tables and plots are presented on the web.
 
 The system is for the administrators. It needs to be installed in the given
 institution. 
