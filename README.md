@@ -8,4 +8,4 @@ institution.
 Many thanks to Piotr Chodnicki from https://punktacjaczasopism.pl for
 converting the mnisw pdfs with journals scoring into a database. 
 
-Demo of the running system: http://www.inf.sgsp.edu.pl/~mimooh/swiatowid/plot.html
+See <a href=http://www.inf.sgsp.edu.pl/~mimooh/swiatowid/plot.html>the demo</a>
