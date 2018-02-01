@@ -243,7 +243,7 @@ class Swiatowid():
             return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
         except:
             print("Problem with this author", a)
-            return ['unknown_author', 'unknown_author', 'unknown_author', 'unknown_author', 'unknown_author']
+            return ['?', '?', '?', '?', '?']
 # }}}
     def _main(self):# {{{
         ''' 
