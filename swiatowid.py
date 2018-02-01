@@ -107,7 +107,7 @@ class Swiatowid():
         parser = argparse.ArgumentParser(description='Options for swiatowid')
 
         parser.add_argument('-a' , help="Anonymize authors"                   , required=False , action='store_true')
-        parser.add_argument('-p' , help="PBN API's json for your institution" , required=False , type=str             , default='wibp.json')
+        parser.add_argument('-p' , help="PBN API's json for your institution" , required=False , type=str             , default='/tmp/wibp.json')
 
         args = parser.parse_args()
 
@@ -242,7 +242,8 @@ class Swiatowid():
         try:
             return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
         except:
-            raise Exception("Problem with this author", a)
+            print("Problem with this author", a)
+            return ['unknown_author', 'unknown_author', 'unknown_author', 'unknown_author', 'unknown_author']
 # }}}
     def _main(self):# {{{
         ''' 
@@ -258,7 +259,7 @@ class Swiatowid():
         authors=OrderedDict()
         authors_publications=[]
 
-        for json_record in self.json.read(self.institution):
+        for json_record in self.json.read(self.institution)['works']:
             p=self._publication_record(json_record)
             publications.append(p)
             for author in json_record['authors']:
@@ -305,7 +306,7 @@ class Swiatowid():
 
 
 z=Swiatowid()
-#z.s.select_v()
+z.s.select_v()
 #z.s.select_publicatons()
 #z.s.select_journals()
 #z.s.select_authors_publications()
