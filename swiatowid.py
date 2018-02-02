@@ -298,10 +298,10 @@ export PBN_ID=125
     def _dump_tables(self):# {{{
         try:
             if self.dump_sqlite==1:
-                self.s.select_v()
                 self.s.select_publicatons()
                 self.s.select_authors_publications()
                 self.s.select_authors()
+                self.s.select_v()
         except:
             pass
 # }}}
