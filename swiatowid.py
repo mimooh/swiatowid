@@ -31,21 +31,6 @@ class Json(): # {{{
         except:
             raise Exception("\n\nMissing or invalid json: {}.".format(path)) 
 
-    def write(self, data, path, pretty=1): 
-        try:
-            if pretty==1:
-                pretty=json.dumps(data, indent=4)
-                f=open(path, 'w')
-                f.write(pretty)
-                f.close()
-            else:
-                f=open(path, 'w')
-                json.dump(data, f)
-                f.close()
-        except:
-            raise Exception("\n\nCannot write json: {}.".format(path)) 
-
-
 # }}}
 class Sqlite(): # {{{
     def __init__(self, handle):
