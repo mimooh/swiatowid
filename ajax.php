@@ -10,7 +10,7 @@ function author_details($id) {
 	$articles.="<tr><td>Punkty<td>Lista<td>Czasopismo<td>Rok<td>Tytuł<td>Autorzy";
 	while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 		extract($row);
-	 	$articles.="<tr><td align=right>$pointsShare<td>$letter<td>($points) $journal<td>$year<td>$title<td>$authors";
+	 	$articles.="<tr><td align=right>$points<td>$letter<td>$parentTitle<td>$year<td>$title<td>$authors";
 	}
 	$articles.="</table>";
 	echo $articles;
