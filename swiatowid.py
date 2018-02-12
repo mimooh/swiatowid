@@ -7,6 +7,7 @@ import sys
 import sqlite3
 import inspect
 import json
+import xmltodict
 
 class dd():# {{{
     def __init__(self,struct):
@@ -85,26 +86,31 @@ class Swiatowid():
         self.anonymize=0
         self.json=Json()
         self._argparse()
-        self._main()
-        self._plot_data()
         self._dump_tables()
+        self._import_from_blue("blue.xml")
 
 # }}}
     def _argparse(self):# {{{
         parser = argparse.ArgumentParser(description='Options for swiatowid')
 
-        parser.add_argument('-a' , help="Anonymize authors"              , required=False , action='store_true')
-        parser.add_argument('-g' , help="Get publications.json from PBN" , required=False , action='store_true')
-        parser.add_argument('-d' , help="See the sqlite database"        , required=False , action='store_true')
+        parser.add_argument('-m' , help="Process publications.json"                                                                , required=False   , action='store_true')
+        parser.add_argument('-a' , help="Anonymize authors"                                                                        , required=False   , action='store_true')
+        parser.add_argument('-g' , help="Get publications.json from PBN"                                                           , required=False   , action='store_true')
+        parser.add_argument('-d' , help="See the sqlite database"                                                                  , required=False   , action='store_true')
+        parser.add_argument('-x' , help="Import <export.xml> from https://pbn.nauka.gov.pl/sedno-webapp/institutions/exportSearch" , required=False )
 
         args = parser.parse_args()
 
         if args.a:
             self.anonymize=1
-        if args.g:
-            self._get_publications_json()
         if args.d:
             self.dump_sqlite=1
+        if args.g:
+            self._get_publications_json()
+        if args.m:
+            self._main()
+        if args.x:
+            self._import_from_blue(args.x)
 # }}}
     def _get_publications_json(self): # {{{
         try:
@@ -264,6 +270,8 @@ export PBN_ID=125
 
         if self.anonymize==1:
             self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
+
+        self._plot_data()
 # }}}
     def _plot_data(self):# {{{
         plot_data=self.s.query("SELECT familyName, givenNames, authorId, round(sum(points),2) AS points FROM v GROUP BY familyName ORDER BY points DESC ")
@@ -304,6 +312,14 @@ export PBN_ID=125
                 self.s.select_v()
         except:
             pass
+# }}}
+    def _import_from_blue(self,xml_file): # {{{
+        with open(xml_file) as f:
+            doc = xmltodict.parse(f.read())
+        dd(doc['works']['article'])
+        dd(doc['works']['chapter'])
+        dd(doc['works']['book'])
+
 # }}}
 
 z=Swiatowid()
