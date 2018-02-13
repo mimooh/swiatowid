@@ -313,12 +313,67 @@ export PBN_ID=125
         except:
             pass
 # }}}
+    def _fix_authors(self):# {{{
+        ''' Poor PBN design that authors are not always a list. We get:
+        * [ author1, author2 ]
+        * [ author1, author2, author3 ]
+        * author1                -- not a list by a dict
+        * NULL                   -- author even missing from xml!
+
+        Also, we are missing given-names at least. Poor, poor xml design.
+        '''
+
+        fixed=OrderedDict()
+        failed_authors=OrderedDict()
+        failed_authors['affiliated']=[]
+        failed_authors['not-affiliated']=[]
+        for work,records in self.works.items():
+            fixed[work]=list()
+            for i in records:
+                try:
+                    if isinstance(i['author'],dict):
+                        z=list()
+                        z.append(i['author'])
+                        i['author']=z
+                except:
+                    i['author']=[OrderedDict()]
+
+                
+                fine_authors=[]
+                for a in i['author']: 
+                    try:
+                        author=OrderedDict([('given-names', a['given-names']), ('family-name', a['family-name']), ('system-identifier', a['system-identifier']['#text']), ('affiliated-to-unit', a['affiliated-to-unit'])])
+                    except:
+                        try:
+                            if a['affiliated-to-unit']=='true':
+                                failed_authors['affiliated'].append((a, i['publication-date'],i['title']))
+                            else:
+                                failed_authors['not-affiliated'].append((a, i['publication-date'],i['title']))
+                        except:
+                            failed_authors['not-affiliated'].append((a, i['publication-date'],i['title']))
+                        
+                    fine_authors.append(a)
+                i['author']=fine_authors
+                fixed[work].append(i)
+                
+        print("== affiliated ==")
+        dd(failed_authors['affiliated'])
+        print("== not-affiliated ==")
+        dd(failed_authors['not-affiliated'])
+
+        return fixed
+# }}}
     def _import_from_blue(self,xml_file): # {{{
         with open(xml_file) as f:
             doc = xmltodict.parse(f.read())
-        dd(doc['works']['article'])
-        dd(doc['works']['chapter'])
-        dd(doc['works']['book'])
+        del doc['works']['@xmlns']
+        del doc['works']['@pbn-unit-id']
+        self.works=doc['works']
+        self._fix_authors()
+        # for i in self.works['chapter']:
+        #     for j in i['author']:
+        #         print(j)
+        #         #print(j['family-name'])
 
 # }}}
 
