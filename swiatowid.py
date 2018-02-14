@@ -87,7 +87,7 @@ class Swiatowid():
         self.json=Json()
         self._argparse()
         self._dump_tables()
-        self._import_from_blue("blue.xml")
+        self._blue_import("blue.xml")
 
 # }}}
     def _argparse(self):# {{{
@@ -313,20 +313,16 @@ export PBN_ID=125
         except:
             pass
 # }}}
-    def _fix_authors(self):# {{{
-        ''' Poor PBN design that authors are not always a list. We get:
-        * [ author1, author2 ]
-        * [ author1, author2, author3 ]
-        * author1                -- not a list by a dict
-        * NULL                   -- author even missing from xml!
 
-        Also, we are missing given-names at least. Poor, poor xml design.
+    def _blue_fix_authors_lists(self):# {{{
+        ''' Poor PBN design that authors are not always a list. We get:
+        * author: [ author1, author2 ]
+        * author: [ author1, author2, author3 ]
+        * author: author1        -- not a list by a dict
+        * NULL                   -- author even missing from xml!
         '''
 
         fixed=OrderedDict()
-        failed_authors=OrderedDict()
-        failed_authors['affiliated']=[]
-        failed_authors['not-affiliated']=[]
         for work,records in self.works.items():
             fixed[work]=list()
             for i in records:
@@ -337,43 +333,61 @@ export PBN_ID=125
                         i['author']=z
                 except:
                     i['author']=[OrderedDict()]
+                fixed[work].append(i)
+        self.works=fixed
+# }}}
+    def _blue_filter_our_authors(self):# {{{
+        '''
+        We are missing given-names at least. Poor, poor xml design. We only
+        filter in the authors that have all attribs and are affiliated to our
+        unit. 
+        '''
 
-                
+        collect=OrderedDict()
+        for work,records in self.works.items():
+            collect[work]=list()
+            for i in records:
                 fine_authors=[]
                 for a in i['author']: 
+                    author_record=OrderedDict()
                     try:
-                        author=OrderedDict([('given-names', a['given-names']), ('family-name', a['family-name']), ('system-identifier', a['system-identifier']['#text']), ('affiliated-to-unit', a['affiliated-to-unit'])])
+                        author_record['given-names']=a['given-names']
+                        author_record['family-name']=a['family-name']
+                        author_record['system-identifier']=a['system-identifier']['#text']
+                        if a['affiliated-to-unit']=='true':
+                            author_record['affiliated-to-unit']=a['affiliated-to-unit']
+                            fine_authors.append(author_record)
                     except:
-                        try:
-                            if a['affiliated-to-unit']=='true':
-                                failed_authors['affiliated'].append((a, i['publication-date'],i['title']))
-                            else:
-                                failed_authors['not-affiliated'].append((a, i['publication-date'],i['title']))
-                        except:
-                            failed_authors['not-affiliated'].append((a, i['publication-date'],i['title']))
-                        
-                    fine_authors.append(a)
+                        pass
                 i['author']=fine_authors
-                fixed[work].append(i)
-                
-        print("== affiliated ==")
-        dd(failed_authors['affiliated'])
-        print("== not-affiliated ==")
-        dd(failed_authors['not-affiliated'])
+                collect[work].append(i)
+        self.works=collect
 
-        return fixed
 # }}}
-    def _import_from_blue(self,xml_file): # {{{
+    def _blue_drop_useless_attribs(self):# {{{
+
+        collect=OrderedDict()
+        for work,records in self.works.items():
+            collect[work]=list()
+            for i in records:
+                del i['modification-date'] 
+                del i['creation-date'] 
+                del i['status'] 
+                collect[work].append(i)
+        self.works=collect
+
+# }}}
+    def _blue_import(self,xml_file): # {{{
         with open(xml_file) as f:
             doc = xmltodict.parse(f.read())
         del doc['works']['@xmlns']
         del doc['works']['@pbn-unit-id']
         self.works=doc['works']
-        self._fix_authors()
-        # for i in self.works['chapter']:
-        #     for j in i['author']:
-        #         print(j)
-        #         #print(j['family-name'])
+        self._blue_fix_authors_lists()
+        self._blue_filter_our_authors()
+        self._blue_drop_useless_attribs()
+        for i in self.works['chapter']:
+            print(i)
 
 # }}}
 
