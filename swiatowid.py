@@ -7,7 +7,6 @@ import sys
 import sqlite3
 import inspect
 import json
-import xmltodict
 
 class dd():# {{{
     def __init__(self,struct):
@@ -87,7 +86,6 @@ class Swiatowid():
         self.json=Json()
         self._argparse()
         self._dump_tables()
-        self._blue_import("blue.xml")
 
 # }}}
     def _argparse(self):# {{{
@@ -97,7 +95,6 @@ class Swiatowid():
         parser.add_argument('-a' , help="Anonymize authors"                                                                        , required=False   , action='store_true')
         parser.add_argument('-g' , help="Get publications.json from PBN"                                                           , required=False   , action='store_true')
         parser.add_argument('-d' , help="See the sqlite database"                                                                  , required=False   , action='store_true')
-        parser.add_argument('-x' , help="Import <export.xml> from https://pbn.nauka.gov.pl/sedno-webapp/institutions/exportSearch" , required=False )
 
         args = parser.parse_args()
 
@@ -109,8 +106,6 @@ class Swiatowid():
             self._get_publications_json()
         if args.m:
             self._main()
-        if args.x:
-            self._import_from_blue(args.x)
 # }}}
     def _get_publications_json(self): # {{{
         try:
@@ -301,7 +296,7 @@ export PBN_ID=125
 <author-details></author-details>
 <script src="js/swiatowid.js"></script>
 </html>''')
-        print('''Done! Place this directory in a http + php environment and see plot.html.''')
+        print('''OK! You can place this directory in a http + php environment and see plot.html.''')
 #}}}
     def _dump_tables(self):# {{{
         try:
@@ -314,81 +309,5 @@ export PBN_ID=125
             pass
 # }}}
 
-    def _blue_fix_authors_lists(self):# {{{
-        ''' Poor PBN design that authors are not always a list. We get:
-        * author: [ author1, author2 ]
-        * author: [ author1, author2, author3 ]
-        * author: author1        -- not a list by a dict
-        * NULL                   -- author even missing from xml!
-        '''
-
-        fixed=OrderedDict()
-        for work,records in self.works.items():
-            fixed[work]=list()
-            for i in records:
-                try:
-                    if isinstance(i['author'],dict):
-                        z=list()
-                        z.append(i['author'])
-                        i['author']=z
-                except:
-                    i['author']=[OrderedDict()]
-                fixed[work].append(i)
-        self.works=fixed
-# }}}
-    def _blue_filter_our_authors(self):# {{{
-        '''
-        We are missing given-names at least. Poor, poor xml design. We only
-        filter in the authors that have all attribs and are affiliated to our
-        unit. 
-        '''
-
-        collect=OrderedDict()
-        for work,records in self.works.items():
-            collect[work]=list()
-            for i in records:
-                fine_authors=[]
-                for a in i['author']: 
-                    author_record=OrderedDict()
-                    try:
-                        author_record['given-names']=a['given-names']
-                        author_record['family-name']=a['family-name']
-                        author_record['system-identifier']=a['system-identifier']['#text']
-                        if a['affiliated-to-unit']=='true':
-                            author_record['affiliated-to-unit']=a['affiliated-to-unit']
-                            fine_authors.append(author_record)
-                    except:
-                        pass
-                i['author']=fine_authors
-                collect[work].append(i)
-        self.works=collect
-
-# }}}
-    def _blue_drop_useless_attribs(self):# {{{
-
-        collect=OrderedDict()
-        for work,records in self.works.items():
-            collect[work]=list()
-            for i in records:
-                del i['modification-date'] 
-                del i['creation-date'] 
-                del i['status'] 
-                collect[work].append(i)
-        self.works=collect
-
-# }}}
-    def _blue_import(self,xml_file): # {{{
-        with open(xml_file) as f:
-            doc = xmltodict.parse(f.read())
-        del doc['works']['@xmlns']
-        del doc['works']['@pbn-unit-id']
-        self.works=doc['works']
-        self._blue_fix_authors_lists()
-        self._blue_filter_our_authors()
-        self._blue_drop_useless_attribs()
-        for i in self.works['chapter']:
-            print(i)
-
-# }}}
 
 z=Swiatowid()
