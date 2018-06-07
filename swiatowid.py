@@ -89,23 +89,23 @@ class Swiatowid():
 
 # }}}
     def _argparse(self):# {{{
-        parser = argparse.ArgumentParser(description='Options for swiatowid')
+        parser = argparse.ArgumentParser(description='Opcje dla swiatowida. Zacznij od opcji -g, gdzie uzyskasz dalsze szczegóły.')
 
-        parser.add_argument('-m' , help="Process publications.json"                                                                , required=False   , action='store_true')
-        parser.add_argument('-a' , help="Anonymize authors"                                                                        , required=False   , action='store_true')
-        parser.add_argument('-g' , help="Get publications.json from PBN"                                                           , required=False   , action='store_true')
-        parser.add_argument('-d' , help="See the sqlite database"                                                                  , required=False   , action='store_true')
+        parser.add_argument('-a' , help="Anonimizacja autorów"            , required=False , action='store_true')
+        parser.add_argument('-g' , help="Pobierz publications.json z PBN" , required=False , action='store_true')
+        parser.add_argument('-l' , help="Wyświetl bazę danych"            , required=False , action='store_true')
+        parser.add_argument('-p' , help="Przetwarzaj publications.json"   , required=False , action='store_true')
 
         args = parser.parse_args()
 
         if args.a:
             self.anonymize=1
-        if args.d:
-            self.dump_sqlite=1
         if args.g:
             self._get_publications_json()
-        if args.m:
-            self._main()
+        if args.l:
+            self.dump_sqlite=1
+        if args.p:
+            self._process_publications()
 # }}}
     def _get_publications_json(self): # {{{
         try:
@@ -113,25 +113,28 @@ class Swiatowid():
             PBN_ID=os.environ['PBN_ID']
         except:
             print('''
-First run is the hardest since you need to obtain the X-Auth-API-Key (PBN_KEY)
-from PBN. You need to be the publication importer for your institution and ask
-for the key via https://pbn-ms.opi.org.pl > Helpdesk
+Najtrudniejsze jest pierwsze uruchomienie ponieważ należy uzyskać
+X-Auth-API-Key (PBN_KEY) z PBN. Taki klucz może uzyskać tylko osoba z funkcją
+importer publikacji z danej instytucji. Klucz zamawia się przez
+https://pbn-ms.opi.org.pl > Helpdesk.
 
-PBN_ID is your institution ID in PBN. It can be found in many places, e.g. in
-the footer of https://pbn-ms.opi.org.pl after you have logged in.
+PBN_ID to identyfikator instytucji w PBN. Pojawia się on w wielu miejscach, np.
+w stopce strony https://pbn-ms.opi.org.pl (po zalogowaniu).
 
-After you obtained the key, export the two PBN variables in your shell
-environment (best via ~/.bashrc). 
+Po uzyskaniu klucza należy wyeksportować dwie zmienne shellowe 
+(najwygodniej eksportować je przez ~/.bashrc):
 
 export PBN_KEY="XXXXXXXXX-XXXXXXXXXXXX-XXXXXXXXX-XXXXXXXXX" 
 export PBN_ID=125                                                                                         
+
+Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 ''')
             sys.exit()
 
         Popen('curl -X GET "https://pbn-ms.opi.org.pl/pbn-report-web/api/v2/search/institution/json/$PBN_ID?page=0&pageSize=999999999&children=false" -H "X-Auth-API-Key: $PBN_KEY" > publications.json', shell=True)
 
 # }}}
-    def _sqlite_init(self):# {{{
+    def _sqlite_reset(self):# {{{
 
         try:
             os.remove("swiatowid.sqlite")
@@ -233,18 +236,18 @@ export PBN_ID=125
         try:
             return self.json.read("publications.json")['works']
         except:
-            print("\nMissing publications.json. Run\npython3 swiatowid.py -g")
+            print("\nBrak publications.json. Uruchom\npython3 swiatowid.py -g")
             sys.exit()
             
 # }}}
-    def _main(self):# {{{
+    def _process_publications(self):# {{{
         ''' 
         Need to be taken under account:
         PBN data contains leading/ending spaces: "issn": " 1234" 
         PBN data contains such authors: "familyName": "Kowalski", "givenNames": "Jan" and "familyName": "Jan", "givenNames": "Kowalski" 
         '''
 
-        self._sqlite_init()
+        self._sqlite_reset()
         self._build_journals_db()
 
         publications=[]
@@ -296,15 +299,16 @@ export PBN_ID=125
 <author-details></author-details>
 <script src="js/swiatowid.js"></script>
 </html>''')
-        print('''OK! You can place this directory in a http + php environment and see plot.html.''')
+        print('''OK! Możesz umieścić ten folder w środowisku http + php i oglądać plot.html.''')
 #}}}
     def _dump_tables(self):# {{{
         try:
             if self.dump_sqlite==1:
-                self.s.select_publicatons()
-                self.s.select_authors_publications()
-                self.s.select_authors()
-                self.s.select_v()
+                s=Sqlite("swiatowid.sqlite")
+                s.select_publicatons()
+                s.select_authors_publications()
+                s.select_authors()
+                s.select_v()
         except:
             pass
 # }}}
