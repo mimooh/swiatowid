@@ -1,7 +1,7 @@
 # swiatowid
 ![alt text](_swiatowid.png)
 
-Światowid pobiera dane instutucji z systemu https://pbn-ms.opi.org.pl. 
+Światowid pobiera dane instytucji z systemu https://pbn-ms.opi.org.pl. 
 
 Zastosowania:
 
