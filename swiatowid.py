@@ -7,6 +7,8 @@ import sys
 import sqlite3
 import inspect
 import json
+import time
+from hashlib import sha1
 
 class dd():# {{{
     def __init__(self,struct):
@@ -131,7 +133,17 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 ''')
             sys.exit()
 
-        Popen('curl -X GET "https://pbn-ms.opi.org.pl/pbn-report-web/api/v2/search/institution/json/$PBN_ID?page=0&pageSize=999999999&children=false" -H "X-Auth-API-Key: $PBN_KEY" > publications.json', shell=True)
+# Wygeneruj klucz API
+# Dodaj do niego godzinę i datę w formacie HHddMMYYYY (np dla godz. 8:35 w dniu 7 czerwca 2018 roku dodajemy „0807062018”)
+# użyj funkcji hashujacej sha1 do zakodowania klucza z doklejoną godziną i datą
+
+
+        key_date=PBN_KEY+time.strftime("%H%d%m%Y")
+        encrypted=sha1(key_date.encode("utf-8")).hexdigest()
+
+        print('\n\ncurl -X GET "https://pbn-ms.opi.org.pl/pbn-report-web/api/v2/search/institution/json/'+PBN_ID+'?page=0&pageSize=999999999&children=false" -H "X-Auth-API-Key: '+encrypted+'" > publications.json')
+        print("\n\n")
+        Popen('curl -X GET "https://pbn-ms.opi.org.pl/pbn-report-web/api/v2/search/institution/json/'+PBN_ID+'?page=0&pageSize=999999999&children=false" -H "X-Auth-API-Key: '+encrypted+'" > publications.json', shell=True)
 
 # }}}
     def _sqlite_reset(self):# {{{
