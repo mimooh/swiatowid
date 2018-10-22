@@ -13,13 +13,15 @@ import re
 from hashlib import sha1
 
 # psql cia -c "\d cuvier_artykuly";
-# psql cia -c "alter table  cuvier_artykuly add column pbn_work_id int";
+# psql cia -c "alter table  cuvier_artykuly add column parentTitle text";
 # psql cia -c "\d cuvier_artykul_autor";
+# psql cia -c "\d cuvier_artykuly";
 # psql cia -c "SELECT name,pbnId from pracownicy order by pbnId,name";
 # sqlite3 swiatowid.sqlite "select * from authors_publications"
 # sqlite3 swiatowid.sqlite "select * from publications where kind='książka'"
 # sqlite3 swiatowid.sqlite "select * from publications where kind='artykuł'"
 # sqlite3 swiatowid.sqlite "select * from publications order by kind"
+# sqlite3 swiatowid.sqlite "select distinct jezyk from publications "
 
 class dd():# {{{
     def __init__(self,struct):
@@ -93,7 +95,6 @@ class Sqlite(): # {{{
 
 # }}}
 
-
 class Swiatowid():
     def __init__(self):# {{{
         self.isbn=11111111
@@ -133,13 +134,28 @@ class Swiatowid():
         for i in self.s.query("SELECT authorId,familyName,givenNames FROM authors"):
             print("UPDATE pracownicy SET pbnid={} WHERE nazwisko='{}' AND imie='{}';".format(i['authorId'], i['familyName'].replace(" ", ""), i['givenNames'].split(" ")[0]));
 #}}}
+    def _sgsp_pg_publications(self):#{{{
+        print("\c cia")
+        print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId) FROM stdin;")
 
+        for i in self.s.query("select * from publications"):
+            v=[]
+            for vv in i.values():
+                if type(vv)!=str:
+                    vv='\\N'
+                v.append(vv)
+            print("\t".join(v))
+        print("\.")
+        print("")
+
+#}}}
     def _sgsp(self):#{{{
         self._sqlite_reset()
         self._read_json()
         #self._build_journals_db()
         self._process_authors()
         self._sgsp_importer()
+        self._sgsp_pg_publications()
         #self._sgsp_pbnids()
 #}}}
     def _argparse(self):# {{{
@@ -213,7 +229,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 
         self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
 
-        self.s.query("CREATE TABLE publications( publicationId,tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,issn,konferencja,scopus,wos,othercontributors,kind,isbn,parentId,parentTitle,abstract)")
+        self.s.query("CREATE TABLE publications(tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId)")
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
         self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
         self.s.query('''
@@ -256,173 +272,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
             short+=" ..."
         return short
 # }}}
-        
-    def _article(self,a):#{{{
-        # psql cia -c "\d cuvier_artykuly";
-        try:
-            a['pages'].strip()
-            a['pages'].replace(" ", "")
-            pages=a['pages'].split("-")
-        except:
-            pass
-        try:
-            i=pages[1]
-        except:
-            pages=[0, 0]
 
-        try:
-            a['journal']['issn']=a['journal']['eissn']
-        except:
-            pass
-
-        record=[]
-        record.append(a['firstSystemIdentifier'].strip())
-        record.append(a['sanitizedTitle'].strip())
-        record.append(a['lang'].strip())
-        record.append(a['publicationDate'].strip())
-        record.append(None) # a['wersja'].strip())
-        try:
-            record.append(a['volume'].strip())
-        except:
-            record.append(0)
-        try:
-            record.append(a['issue'].strip())
-        except:
-            record.append(0)
-        record.append(pages[0])
-        record.append(pages[1])
-        record.append(None) # a['licencja'].strip())
-        record.append(a['doi'].strip())
-        record.append(a['journal']['issn'].strip())
-        try:
-            record.append(a['conference']['name'].strip())
-            record.append(a['conference']['scopusIndexed'])
-            record.append(a['conference']['webOfScienceIndexed'])
-        except:
-            record.append(None) 
-            record.append(None) 
-            record.append(None) 
-
-        try:
-            record.append(a['otherContributors'])
-        except:
-            record.append(None)
-        record.append('artykuł')
-        record.append(None)
-        record.append(None)
-
-        record.append(a['sanitizedTitle'].strip())
-        record.append(None)
-        # todo abstract
-        return record
-#}}}
-    def _book(self,a):#{{{
-        # psql cia -c "\d cuvier_artykuly";
-        if not re.match("[\w]", a['firstSystemIdentifier']):
-            a['firstSystemIdentifier']="ID-{}".format(self.isbn)
-            self.isbn+=1
-
-        if not re.match("\d", a['isbn']):
-            a['isbn']="{}".format(self.isbn)
-            self.isbn+=1
-        a['isbn']=re.sub("[^\w]", "", a['isbn'])
-
-        record=[]
-        record.append(a['firstSystemIdentifier'].strip())
-        record.append(a['sanitizedTitle'].strip())
-        try:
-            record.append(a['lang'].strip())
-        except:
-            record.append(None)
-        record.append(a['publicationDate'].strip())
-        record.append(None) # a['wersja'].strip())
-        record.append(None) # a['volume'].strip())
-        record.append(None) # a['issue'].strip())
-        record.append(None) # a['strona_od'].strip())
-        record.append(None) # a['strona_do'].strip())
-        record.append(None) # a['licencja'].strip())
-        record.append(a['doi'].strip())
-        record.append(None) # a['issn'].strip())
-        try:
-            record.append(a['conference']['name'].strip())
-            record.append(a['conference']['scopusIndexed'])
-            record.append(a['conference']['webOfScienceIndexed'])
-        except:
-            record.append(None) 
-            record.append(None) 
-            record.append(None) 
-
-        try:
-            record.append(a['otherContributors'])
-        except:
-            record.append(None)
-        record.append('książka')
-        record.append(a['isbn'].strip())
-        record.append(a['isbn'].strip())
-
-        record.append(a['sanitizedTitle'].strip())
-        record.append(None)
-        # todo abstract
-        return record
-#}}}
-    def _chapter(self,a):#{{{
-        # psql cia -c "\d cuvier_artykuly";
-
-        record=[]
-        record.append(a['firstSystemIdentifier'].strip())
-        record.append(a['sanitizedTitle'].strip())
-        record.append(a['lang'].strip())
-        record.append(a['publicationDate'].strip())
-        record.append(None) # a['wersja'].strip())
-        record.append(None) # a['volume'].strip())
-        record.append(None) # a['issue'].strip())
-        record.append(None) # a['strona_od'].strip())
-        record.append(None) # a['strona_do'].strip())
-        record.append(None) # a['licencja'].strip())
-        record.append(a['doi'].strip())
-        record.append(None) # a['issn'].strip())
-        try:
-            record.append(a['conference']['name'].strip())
-            record.append(a['conference']['scopusIndexed'])
-            record.append(a['conference']['webOfScienceIndexed'])
-        except:
-            record.append(None) 
-            record.append(None) 
-            record.append(None) 
-
-        try:
-            record.append(a['otherContributors'])
-        except:
-            record.append(None)
-        record.append('rozdział')
-        record.append(None) # a['isbn'].strip())
-        record.append(a['book']['firstSystemIdentifier'].strip())
-
-        record.append(a['sanitizedTitle'].strip())
-        record.append(None)
-        # todo abstract
-        return record
-#}}}
-
-    def _publication_record(self,a):# {{{
-        # psql cia -c "\d cuvier_artykuly";
-        # y jest tylko na okolicznosc chapter[book]
-        y=[]
-
-        if a['kind']=='Article':
-            x=self._article(a)
-
-        elif a['kind']=='Book':
-            x=self._book(a)
-
-        elif a['kind']=='Chapter':
-            y=self._book(a['book'])
-            x=self._chapter(a)
-
-        return (x,y)
-
-
-# }}}
     def _author_record(self,a):# {{{
 
         if a['affiliatedToUnit']==True:
@@ -543,5 +393,195 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
             pass
 # }}}
 
+    def _article(self,a):#{{{
+        # psql cia -c "\d cuvier_artykuly";
+
+        try:
+            a['pages'].strip()
+            a['pages'].replace(" ", "")
+            pages=a['pages'].split("-")
+        except:
+            pass
+        try:
+            i=pages[1]
+        except:
+            pages=[0, 0]
+
+        try:
+            a['journal']['issn']=a['journal']['eissn']
+        except:
+            pass
+
+        record=[]
+        record.append(a['sanitizedTitle'].strip())
+        record.append(a['lang'].strip())
+        record.append(a['publicationDate'].strip())
+        record.append(None) # a['wersja'].strip())
+        try:
+            record.append(a['volume'].strip())
+        except:
+            record.append(0)
+        try:
+            record.append(a['issue'].strip())
+        except:
+            record.append(0)
+        record.append(pages[0])
+        record.append(pages[1])
+        record.append(None) # a['licencja'].strip())
+        record.append(a['doi'].strip())
+        record.append('artykuł')
+        record.append(a['journal']['issn'].strip())
+        record.append(None)
+        record.append(a['journal']['issn'].strip())
+        try:
+            record.append(a['conference']['name'].strip())
+            record.append(a['conference']['scopusIndexed'])
+            record.append(a['conference']['webOfScienceIndexed'])
+        except:
+            record.append(None) 
+            record.append(None) 
+            record.append(None) 
+
+        try:
+            record.append(a['otherContributors'])
+        except:
+            record.append(None)
+        record.append(a['sanitizedTitle'].strip())
+        try:
+            record.append(a['abstracts'][0]['value'])
+        except:
+            record.append(None)
+        record.append(a['firstSystemIdentifier'].strip())
+
+        record=self._sanitize_record(record)
+        return record
+#}}}
+    def _book(self,a):#{{{
+        # psql cia -c "\d cuvier_artykuly";
+        try:
+            wydawca=a['publisherName']
+        except:
+            wydawca=None
+
+        if not re.match("[\w]", a['firstSystemIdentifier']):
+            a['firstSystemIdentifier']="ID-{}".format(self.isbn)
+            self.isbn+=1
+
+        if not re.match("\d", a['isbn']):
+            a['isbn']="{}".format(self.isbn)
+            self.isbn+=1
+        a['isbn']=re.sub("[^\w]", "", a['isbn'])
+
+        record=[]
+        record.append(a['sanitizedTitle'].strip())
+        try:
+            record.append(a['lang'].strip())
+        except:
+            record.append(None)
+        record.append(a['publicationDate'].strip())
+        record.append(None) # a['wersja'].strip())
+        record.append(None) # a['volume'].strip())
+        record.append(None) # a['issue'].strip())
+        record.append(None) # a['strona_od'].strip())
+        record.append(None) # a['strona_do'].strip())
+        record.append(None) # a['licencja'].strip())
+        record.append(a['doi'].strip())
+        record.append('książka')
+        record.append(None) # a['issn'].strip())
+        record.append(a['isbn'].strip())
+        record.append(wydawca)
+        try:
+            record.append(a['conference']['name'].strip())
+            record.append(a['conference']['scopusIndexed'])
+            record.append(a['conference']['webOfScienceIndexed'])
+        except:
+            record.append(None) 
+            record.append(None) 
+            record.append(None) 
+
+        try:
+            record.append(a['otherContributors'])
+        except:
+            record.append(None)
+        record.append(a['sanitizedTitle'].strip())
+        try:
+            record.append(a['abstracts'][0]['value'])
+        except:
+            record.append(None)
+        record.append(a['firstSystemIdentifier'].strip())
+
+        record=self._sanitize_record(record)
+        return record
+#}}}
+    def _chapter(self,a):#{{{
+        # psql cia -c "\d cuvier_artykuly";
+
+        record=[]
+        record.append(a['sanitizedTitle'].strip())
+        record.append(a['lang'].strip())
+        record.append(a['publicationDate'].strip())
+        record.append(None) # a['wersja'].strip())
+        record.append(None) # a['volume'].strip())
+        record.append(None) # a['issue'].strip())
+        record.append(None) # a['strona_od'].strip())
+        record.append(None) # a['strona_do'].strip())
+        record.append(None) # a['licencja'].strip())
+        record.append(a['doi'].strip())
+        record.append('rozdział')
+        record.append(None) # a['issn'].strip())
+        record.append(None) # a['isbn'].strip())
+        record.append(a['book']['firstSystemIdentifier'].strip())
+        try:
+            record.append(a['conference']['name'].strip())
+            record.append(a['conference']['scopusIndexed'])
+            record.append(a['conference']['webOfScienceIndexed'])
+        except:
+            record.append(None) 
+            record.append(None) 
+            record.append(None) 
+
+        try:
+            record.append(a['otherContributors'])
+        except:
+            record.append(None)
+        record.append(a['sanitizedTitle'].strip())
+        try:
+            record.append(a['abstracts'][0]['value'])
+        except:
+            record.append(None)
+        record.append(a['firstSystemIdentifier'].strip())
+
+        record=self._sanitize_record(record)
+        return record
+#}}}
+    def _sanitize_record(self,record):#{{{
+        z=[]
+        for i in record:
+            if type(i)==str:
+                z.append(re.sub('[„"”]', '', i))
+            else:
+                z.append(i)
+        return z
+#}}}
+    def _publication_record(self,a):# {{{
+        # psql cia -c "\d cuvier_artykuly";
+        # y jest tylko na okolicznosc chapter[book]
+        y=[]
+
+        if a['kind']=='Article':
+            x=self._article(a)
+
+        elif a['kind']=='Book':
+            x=self._book(a)
+
+        elif a['kind']=='Chapter':
+            y=self._book(a['book'])
+            x=self._chapter(a)
+
+        #print(x[11], len(x))
+        return (x,y)
+
+
+# }}}
 
 z=Swiatowid()
