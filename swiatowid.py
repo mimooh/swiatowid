@@ -1,4 +1,3 @@
-# add book to cuvier, then chapter
 from collections import OrderedDict
 from subprocess import Popen,PIPE
 import os
@@ -101,24 +100,14 @@ class Swiatowid():
 
         args = parser.parse_args()
 
-        self._sqlite_reset()
-        self._read_json()
-        self._build_journals_db()
-        self._process_authors()
-        self._process_publications()
-        #self._plot_data()
-
-        # if args.a:
-        #     self.anonymize=1
-        # if args.g:
-        #     self._get_publications_json()
-        # if args.l:
-        #     self.dump_sqlite=1
-        # if args.p:
-        #    TODO: check funcs
-        #     self._sqlite_reset()
-        #     self._build_journals_db()
-        #     self._process_publications()
+        if args.a:
+            self.anonymize=1
+        if args.g:
+            self._get_publications_json()
+        if args.l:
+            self.dump_sqlite=1
+        if args.p:
+            self._process_publications()
 # }}}
     def _get_publications_json(self): # {{{
         try:
@@ -217,12 +206,11 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
             except:
                 pass
 
+        if a['kind']=='Article':
             parentId=a['journal']['issn'].strip()
             parentTitle=a['journal']['title']['value'].strip()
 
         elif a['kind']=='Chapter':
-            dd(a['book'])
-            exit()
             parentId=a['book']['isbn'].strip()
             parentTitle=a['book']['title'].strip()
 
@@ -246,115 +234,54 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 
 # }}}
     def _author_record(self,a):# {{{
-
         if a['affiliatedToUnit']==True:
             a['affiliatedToUnit']=1
         else:
             a['affiliatedToUnit']=0
-
         if a['employedInUnit']==True:
             a['employedInUnit']=1
         else:
             a['employedInUnit']=0
 
-        if not 'familyName' in a:
-            a['familyName']='Brak nazwiska';
-        
-        if not 'givenNames' in a:
-            a['givenNames']='Brak imienia';
-
-        if not 'pbnId' in a:
-            a['pbnId']='nieznany';
-        
-        return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
-# }}}
-    def _read_json(self):# {{{
         try:
-            self._publications=self.json.read("publications.json")['works']
+            return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
+        except:
+            #print("Problem with this author", a)
+            return ['?', '?', '?', '?', '?']
+# }}}
+    def _publications_data(self):# {{{
+        try:
+            return self.json.read("publications.json")['works']
         except:
             print("\nBrak publications.json. Uruchom\npython3 swiatowid.py -g")
             sys.exit()
             
 # }}}
-    def _fix_authors(self):# {{{
-        ''' 
-        After we have know authors in the database, we convert such records:
-
-        pbnId=?    , familyName='Krasuski' , givenNames='Adam' , affiliatedToUnit=1 , employedInUnit=1
-            to
-        pbnId=1234 , familyName='Krasuski' , givenNames='Adam' , affiliatedToUnit=1 , employedInUnit=1
-
-        # sqlite3 swiatowid.sqlite "select * from authors order by authorId"
-
-        '''
-
-        #dd(self._publications[115]['authors'][1])
-        for i in self._publications:
-            for a in i['authors']:
-                #if a['pbnId']=='nieznany' and a['affiliatedToUnit']==1:
-                if a['pbnId']=='nieznany':
-                    z=self.s.query("select authorId from authors where familyName=? and givenNames=?", (a['familyName'], a['givenNames']))
-                    try:
-                        a['pbnId']=z[0]['authorId']
-                    except:
-                        pass
-        #dd(self._publications[115]['authors'][1])
-        
-# }}}
-    def _process_authors(self):# {{{
-        ''' 
-        Need to be taken under account:
-        PBN data contains such authors: "familyName": "Kowalski", "givenNames": "Jan" and "familyName": "Jan", "givenNames": "Kowalski" 
-        '''
-
-        authors=OrderedDict()
-        fixme=[]
-        for json_record in self._publications: 
-            for author in json_record['authors']:
-                a=self._author_record(author)
-                if a[0]!='nieznany':
-                    authors[a[0]]=tuple(a)
-        self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
-
-        # sqlite3 swiatowid.sqlite "select * from authors order by authorId"
-        # sqlite3 swiatowid.sqlite "select * from v where authorId='0'"
-        if self.anonymize==1:
-            self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
-
-        self._fix_authors()
-
-# }}}
     def _process_publications(self):# {{{
         ''' 
         Need to be taken under account:
         PBN data contains leading/ending spaces: "issn": " 1234" 
+        PBN data contains such authors: "familyName": "Kowalski", "givenNames": "Jan" and "familyName": "Jan", "givenNames": "Kowalski" 
         '''
 
+        self._sqlite_reset()
+        self._build_journals_db()
+
         publications=[]
+        authors=OrderedDict()
         authors_publications=[]
 
-        for json_record in self._publications: 
+        for json_record in self._publications_data(): 
             p=self._publication_record(json_record)
             publications.append(p)
             for author in json_record['authors']:
                 a=self._author_record(author)
+                authors[a[0]]=tuple(a)
                 authors_publications.append((a[0],p[0]))
 
-        #self.s.query("CREATE TABLE publications(publicationId, title, kind, year, parentId, parentTitle, authors, points, letter)")
         self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?,?,?)', publications)
+        self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
         self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
-
-        #dd(self.s.query("select * from authors where authorId='3937075'"))
-        #dd(self.s.query("select * from v where authorId='3937075'"))
-
-        # python3 swiatowid.py -p
-        # sqlite3 swiatowid.sqlite "select * from authors order by authorId"
-        # sqlite3 swiatowid.sqlite "select * from v where authorId='0'"
-        # sqlite3 swiatowid.sqlite "select * from v where publicationId in (select publicationId  from v where authorId='0') and publicationId not in (select  publicationId from v where familyName REGEXP 'Sala')"
-        # sqlite3 swiatowid.sqlite "select * from v where familyName REGEXP 'Rogula'"
-        # sqlite3 swiatowid.sqlite "select * from v where familyName='?'"
-        # sqlite3 swiatowid.sqlite "select * from v where title REGEXP 'Particulate'"
-        # sqlite3 swiatowid.sqlite "select * from v "
 
         if self.anonymize==1:
             self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
@@ -384,7 +311,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 <script src="js/jquery.js"></script>
 </HEAD>
 <BODY>
-<page> <h1>SGSP</h1> </page>
+<page> <h1>Światowid</h1> </page>
     <table id=plot_table> '''+"".join(h)+'''</table>
 <author-details></author-details>
 <script src="js/swiatowid.js"></script>
