@@ -11,16 +11,17 @@ import json
 import time
 import re
 from hashlib import sha1
+from include import Psql
 
-# psql cia -c "\d cuvier_artykuly";
-# psql cia -c "alter table  cuvier_artykuly add column parentTitle text";
-# psql cia -c "\d cuvier_artykul_autor";
-# psql cia -c "\d cuvier_artykuly";
+# psql cia -c "select * from  cuvier_artykul_autor";
+# psql cia -c "select * from  cuvier_artykuly";
 # psql cia -c "SELECT name,pbnId from pracownicy order by pbnId,name";
 # sqlite3 swiatowid.sqlite "select * from authors_publications"
 # sqlite3 swiatowid.sqlite "select * from publications where kind='książka'"
 # sqlite3 swiatowid.sqlite "select * from publications where kind='artykuł'"
 # sqlite3 swiatowid.sqlite "select * from publications order by kind"
+# sqlite3 swiatowid.sqlite "select * from authors"
+# sqlite3 swiatowid.sqlite "select * from authors_publications"
 # sqlite3 swiatowid.sqlite "select distinct jezyk from publications "
 
 class dd():# {{{
@@ -47,6 +48,7 @@ class Json(): # {{{
             raise Exception("\n\nMissing or invalid json: {}.".format(path)) 
 
 # }}}
+
 class Sqlite(): # {{{
     def __init__(self, handle):
         self.SQLITE = sqlite3.connect(handle)
@@ -112,6 +114,7 @@ class Swiatowid():
         Need to be taken under account:
         PBN data contains leading/ending spaces: "issn": " 1234" 
         '''
+        self.p=Psql()
 
         publications=[]
         authors_publications=[]
@@ -122,11 +125,11 @@ class Swiatowid():
             publications.append(p)
             if len(r[1]) > 0:
                 publications.append(r[1])
-            for author in json_record['authors']:
+            for kolejnosc,author in enumerate(json_record['authors']):
                 a=self._author_record(author)
-                authors_publications.append((a[0],p[0]))
+                authors_publications.append((a[0],p[-1],kolejnosc))
         self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', publications)
-        self.s.executemany('INSERT INTO authors_publications VALUES (?,?)', set(authors_publications))
+        self.s.executemany('INSERT INTO authors_publications VALUES (?,?,?)', set(authors_publications))
 
 # }}}
     def _sgsp_pbnids(self):#{{{
@@ -149,13 +152,70 @@ class Swiatowid():
         print("")
 
 #}}}
+    def _sgsp_pg_authors(self):#{{{
+        '''
+        1954416|PBN-R:807049
+        1770894|PBN-R:875262
+        Ogrodnik Paweł|PBN-R:697638
+
+        # sqlite3 swiatowid.sqlite "select * from authors"
+        # sqlite3 swiatowid.sqlite "select * from authors_publications where publication_id='PBN-R:254749' order by kolejnosc"
+        # sqlite3 swiatowid.sqlite "select distinct publicationId from publications"
+
+        granule: PBN-R:254749 Karol Kreński ✓ , Adam Krasuski ✓ , Marcin Szczuka ✓ , Stanisław Łazowy ✓ 
+
+        psql cia -c "select * from  cuvier_artykul_autor";
+        psql cia -c "select * from  cuvier_artykuly";
+        psql cia -c "select * from pracownicy";
+        psql cia -c "alter table cuvier_artykul_autor add column pbnauthor ";
+        psql cia -c "alter table pracownicy drop column pbnid";
+        '''
+
+        print("uu")
+        #print("\c cia")
+        #print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId) FROM stdin;")
+        # PBN-R:254749
+        # psql cia -c "select id,tytul,publicationId  from  cuvier_artykuly where publicationid='PBN-R:254749'";
+
+        #  id  |                 tytul                  | publicationid 
+        # 1644 | Granular Knowledge Discovery Framework | PBN-R:254749
+        # psql cia -c "select * from  cuvier_artykul_autor";
+        # psql cia -c "select * from  pracownicy";
+
+        #   id  | id_artykulu | id_autora | kolejnosc | obcy | afiliacja | modifier |  modified  | jest_redaktorem | pbnart | pbnauthor 
+
+        #  1258 |        2033 |           |           |      |           |          | 2018-10-23 |                 |        |          
+        # TODO: NON SGSP
+
+        for i in self.s.query("select distinct publicationId as ii from publications"):
+            for j in self.s.query("select * from authors_publications WHERE publication_id=? order by kolejnosc", (i['ii'],)):
+                #print(j)
+
+                article_id=self.p.query("SELECT id from cuvier_artykuly where publicationId=%s", (j['publication_id'],))[0]['id']
+                aa=self.p.query("SELECT id,name from pracownicy where pbnauthor=%s", (j['author_id'],))
+                try:
+                    a=aa[0]['id']
+                except:
+                    a='obcy'
+                if a!='obcy':
+                    self.p.query('''
+                    INSERT INTO cuvier_artykul_autor(
+                    id_artykulu , id_autora , kolejnosc      , obcy , afiliacja , jest_redaktorem , pbnart  , pbnauthor) values(
+                    %s          , %s        , %s             , %s   , %s        , %s              , %s      , %s)''',
+                    (article_id , a         , j['kolejnosc'] , 0    , 'SGSP'    , 0               , i['ii'] , j['author_id'])
+                    )
+
+
+#}}}
+
     def _sgsp(self):#{{{
         self._sqlite_reset()
         self._read_json()
         #self._build_journals_db()
         self._process_authors()
         self._sgsp_importer()
-        self._sgsp_pg_publications()
+        #self._sgsp_pg_publications()
+        self._sgsp_pg_authors()
         #self._sgsp_pbnids()
 #}}}
     def _argparse(self):# {{{
@@ -231,7 +291,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 
         self.s.query("CREATE TABLE publications(tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId)")
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
-        self.s.query("CREATE TABLE authors_publications(author_id, publication_id)")
+        self.s.query("CREATE TABLE authors_publications(author_id, publication_id, kolejnosc)")
         self.s.query('''
              CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.parentTitle, p.publicationId, p.kind
              FROM authors a , publications p , authors_publications ap
@@ -292,7 +352,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
             a['givenNames']='Brak imienia';
 
         if not 'pbnId' in a:
-            a['pbnId']='nieznany';
+            a['pbnId']=a['familyName']+" "+a['givenNames']
         
         return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
 # }}}
