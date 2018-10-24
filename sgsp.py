@@ -139,7 +139,7 @@ class Swiatowid():
 #}}}
     def _sgsp_pg_publications(self):#{{{
         print("\c cia")
-        print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId) FROM stdin;")
+        print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstrakt,publicationId) FROM stdin;")
 
         for i in self.s.query("select * from publications"):
             v=[]
@@ -185,26 +185,43 @@ class Swiatowid():
         #  1258 |        2033 |           |           |      |           |          | 2018-10-23 |                 |        |          
         # TODO: NON SGSP
 
+
         for i in self.s.query("select distinct publicationId as ii from publications"):
             for j in self.s.query("select * from authors_publications WHERE publication_id=? order by kolejnosc", (i['ii'],)):
-                print(j)
 
                 article_id=self.p.query("SELECT id from cuvier_artykuly where publicationId=%s", (j['publication_id'],))[0]['id']
                 aa=self.p.query("SELECT id,name from pracownicy where pbnauthor=%s", (j['author_id'],))
                 try:
-                    a=aa[0]['id']
+                    aid=aa[0]['id']
+                    is_obcy=0
+                    afiliacja='SGSP'
                 except:
-                    a='obcy'
-                if a!='obcy':
-                    self.p.querydd('''
-                    INSERT INTO cuvier_artykul_autor(
-                    id_artykulu , id_autora , kolejnosc      , obcy , afiliacja , jest_redaktorem , pbnart  , pbnauthor) values(
-                    %s          , %s        , %s             , %s   , %s        , %s              , %s      , %s)''',
-                    (article_id , a         , j['kolejnosc'] , 0    , 'SGSP'    , 0               , i['ii'] , j['author_id'])
-                    )
-                else:
-                    # psql cia -c "select * from  cuvier_obcy_autorzy";
-                    print("obcy", j['author_id'])
+                    aid='obcy'
+                    is_obcy=1
+                    afiliacja=''
+
+                if aid=='obcy':
+                    #psql cia -c "select * from  cuvier_obcy_autorzy";
+                    #psql cia -c "select * from  cuvier_artykul_autor";
+                    #psql cia -c "\d cuvier_artykul_autor";
+                    z=self.p.query("select * from  cuvier_obcy_autorzy where name=%s", (j['author_id'],))
+                    if len(z) == 0:
+                        self.p.query("insert into cuvier_obcy_autorzy(name) values(%s)", (j['author_id'],))
+                    z=self.p.query("select id from cuvier_obcy_autorzy where name=%s", (j['author_id'],))
+                    aid=z[0]['id']
+                # self.p.querydd('''
+                # INSERT INTO cuvier_artykul_autor(
+                # id_artykulu , id_autora , kolejnosc      , obcy    , afiliacja , jest_redaktorem , pbnart  , pbnauthor) values(
+                # %s          , %s        , %s             , %s      , %s        , %s              , %s      , %s)'''             ,
+                # (article_id , aid       , j['kolejnosc'] , is_obcy , afiliacja , 0               , i['ii'] , j['author_id'])
+                # )
+
+                self.p.query('''
+                INSERT INTO cuvier_artykul_autor(
+                id_artykulu , id_autora , kolejnosc      , obcy    , afiliacja , jest_redaktorem , pbnart  , pbnauthor) values(
+                %s          , %s        , %s             , %s      , %s        , %s              , %s      , %s)'''             ,
+                (article_id , aid       , j['kolejnosc'] , is_obcy , afiliacja , 0               , i['ii'] , j['author_id'])
+                )
 
 
 #}}}
@@ -216,7 +233,7 @@ class Swiatowid():
         self._process_authors()
         self._sgsp_importer()
         #self._sgsp_pg_publications()
-        #self._sgsp_pg_authors()
+        self._sgsp_pg_authors()
         #self._sgsp_pbnids()
 #}}}
     def _argparse(self):# {{{
@@ -290,7 +307,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 
         self.s.query("CREATE TABLE journals(issn, points, letter, journal)")
 
-        self.s.query("CREATE TABLE publications(tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId)")
+        self.s.query("CREATE TABLE publications(tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstrakt,publicationId)")
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
         self.s.query("CREATE TABLE authors_publications(author_id, publication_id, kolejnosc)")
         self.s.query('''
@@ -334,48 +351,6 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
         return short
 # }}}
 
-    def _author_record(self,a):# {{{
-
-        if a['affiliatedToUnit']==True:
-            a['affiliatedToUnit']=1
-        else:
-            a['affiliatedToUnit']=0
-
-        if a['employedInUnit']==True:
-            a['employedInUnit']=1
-        else:
-            a['employedInUnit']=0
-
-        a['familyName']=a['familyName'].replace(" ", "")
-        a['givenNames']=a['givenNames'].split(" ")[0];
-
-        if not 'familyName' in a:
-            a['familyName']='Brak nazwiska';
-        
-        if not 'givenNames' in a:
-            a['givenNames']='Brak imienia';
-
-        print()
-        print(a['familyName'])
-
-        if a['affiliatedToUnit']==True:
-            try:
-                # psql cia -c "SELECT name,pbnauthor from pracownicy"
-                aa=self.p.query("SELECT pbnauthor from pracownicy where nazwisko=%s AND imie=%s", (a['familyName'], a['givenNames']))
-                if len(aa) > 0:
-                    a['pbnId']=aa[0]
-            except:
-                a['pbnId']=a['familyName']+" "+a['givenNames']
-        else:
-            a['pbnId']=a['familyName']+" "+a['givenNames']
-
-        if not 'pbnId' in a: 
-            a['pbnId']=a['familyName']+" "+a['givenNames']
-
-        print(a['pbnId'])
-        
-        return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
-# }}}
     def _read_json(self):# {{{
         try:
             self._publications=self.json.read("publications.json")['works']
@@ -395,8 +370,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
         for json_record in self._publications: 
             for author in json_record['authors']:
                 a=self._author_record(author)
-                if a[0]!='nieznany':
-                    authors[a[0]]=tuple(a)
+                authors[a[0]]=tuple(a)
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
 
         if self.anonymize==1:
@@ -636,6 +610,52 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
         return (x,y)
 
 
+# }}}
+
+    def _author_record(self,a):# {{{
+
+        if a['affiliatedToUnit']==True:
+            a['affiliatedToUnit']=1
+        else:
+            a['affiliatedToUnit']=0
+
+        if a['employedInUnit']==True:
+            a['employedInUnit']=1
+        else:
+            a['employedInUnit']=0
+
+        a['familyName']=a['familyName'].replace(" ", "").title()
+        try:
+            a['givenNames']=a['givenNames'].split(" ")[0].title();
+        except:
+            pass
+
+        if not 'familyName' in a:
+            a['familyName']='Brak';
+        
+        if not 'givenNames' in a:
+            a['givenNames']='Brak';
+
+        #print(a['familyName'])
+        #print(a)
+
+        if a['affiliatedToUnit']==True:
+            try:
+                # psql cia -c "SELECT name,pbnauthor from pracownicy where nazwisko ~ 'Gawro'"
+                aa=self.p.query("SELECT pbnauthor from pracownicy where nazwisko=%s AND imie=%s", (a['familyName'], a['givenNames']))
+                if len(aa) > 0:
+                    a['pbnId']=aa[0]['pbnauthor']
+            except:
+                a['pbnId']=a['familyName']+" "+a['givenNames']
+        else:
+            a['pbnId']=a['familyName']+" "+a['givenNames']
+
+        if not 'pbnId' in a: 
+            a['pbnId']=a['familyName']+" "+a['givenNames']
+
+        #print(a['pbnId'])
+        
+        return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
 # }}}
 
 z=Swiatowid()
