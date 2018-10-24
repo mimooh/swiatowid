@@ -99,6 +99,7 @@ class Sqlite(): # {{{
 
 class Swiatowid():
     def __init__(self):# {{{
+        self.p=Psql()
         self.isbn=11111111
         self.anonymize=0
         self.json=Json()
@@ -114,7 +115,6 @@ class Swiatowid():
         Need to be taken under account:
         PBN data contains leading/ending spaces: "issn": " 1234" 
         '''
-        self.p=Psql()
 
         publications=[]
         authors_publications=[]
@@ -135,7 +135,7 @@ class Swiatowid():
     def _sgsp_pbnids(self):#{{{
         ''' W bazie SGSP mam kolumne pbnid na identyfikatory autorow. '''
         for i in self.s.query("SELECT authorId,familyName,givenNames FROM authors"):
-            print("UPDATE pracownicy SET pbnid={} WHERE nazwisko='{}' AND imie='{}';".format(i['authorId'], i['familyName'].replace(" ", ""), i['givenNames'].split(" ")[0]));
+            print("UPDATE pracownicy SET pbnid={} WHERE nazwisko='{}' AND imie='{}';".format(i['authorId'], i['familyName'], i['givenNames']));
 #}}}
     def _sgsp_pg_publications(self):#{{{
         print("\c cia")
@@ -171,15 +171,13 @@ class Swiatowid():
         psql cia -c "alter table pracownicy drop column pbnid";
         '''
 
-        print("uu")
-        #print("\c cia")
-        #print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId) FROM stdin;")
+        # print("\c cia")
+        # print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId) FROM stdin;")
         # PBN-R:254749
         # psql cia -c "select id,tytul,publicationId  from  cuvier_artykuly where publicationid='PBN-R:254749'";
 
         #  id  |                 tytul                  | publicationid 
         # 1644 | Granular Knowledge Discovery Framework | PBN-R:254749
-        # psql cia -c "select * from  cuvier_artykul_autor";
         # psql cia -c "select * from  pracownicy";
 
         #   id  | id_artykulu | id_autora | kolejnosc | obcy | afiliacja | modifier |  modified  | jest_redaktorem | pbnart | pbnauthor 
@@ -189,7 +187,7 @@ class Swiatowid():
 
         for i in self.s.query("select distinct publicationId as ii from publications"):
             for j in self.s.query("select * from authors_publications WHERE publication_id=? order by kolejnosc", (i['ii'],)):
-                #print(j)
+                print(j)
 
                 article_id=self.p.query("SELECT id from cuvier_artykuly where publicationId=%s", (j['publication_id'],))[0]['id']
                 aa=self.p.query("SELECT id,name from pracownicy where pbnauthor=%s", (j['author_id'],))
@@ -198,12 +196,15 @@ class Swiatowid():
                 except:
                     a='obcy'
                 if a!='obcy':
-                    self.p.query('''
+                    self.p.querydd('''
                     INSERT INTO cuvier_artykul_autor(
                     id_artykulu , id_autora , kolejnosc      , obcy , afiliacja , jest_redaktorem , pbnart  , pbnauthor) values(
                     %s          , %s        , %s             , %s   , %s        , %s              , %s      , %s)''',
                     (article_id , a         , j['kolejnosc'] , 0    , 'SGSP'    , 0               , i['ii'] , j['author_id'])
                     )
+                else:
+                    # psql cia -c "select * from  cuvier_obcy_autorzy";
+                    print("obcy", j['author_id'])
 
 
 #}}}
@@ -215,7 +216,7 @@ class Swiatowid():
         self._process_authors()
         self._sgsp_importer()
         #self._sgsp_pg_publications()
-        self._sgsp_pg_authors()
+        #self._sgsp_pg_authors()
         #self._sgsp_pbnids()
 #}}}
     def _argparse(self):# {{{
@@ -345,14 +346,33 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
         else:
             a['employedInUnit']=0
 
+        a['familyName']=a['familyName'].replace(" ", "")
+        a['givenNames']=a['givenNames'].split(" ")[0];
+
         if not 'familyName' in a:
             a['familyName']='Brak nazwiska';
         
         if not 'givenNames' in a:
             a['givenNames']='Brak imienia';
 
-        if not 'pbnId' in a:
+        print()
+        print(a['familyName'])
+
+        if a['affiliatedToUnit']==True:
+            try:
+                # psql cia -c "SELECT name,pbnauthor from pracownicy"
+                aa=self.p.query("SELECT pbnauthor from pracownicy where nazwisko=%s AND imie=%s", (a['familyName'], a['givenNames']))
+                if len(aa) > 0:
+                    a['pbnId']=aa[0]
+            except:
+                a['pbnId']=a['familyName']+" "+a['givenNames']
+        else:
             a['pbnId']=a['familyName']+" "+a['givenNames']
+
+        if not 'pbnId' in a: 
+            a['pbnId']=a['familyName']+" "+a['givenNames']
+
+        print(a['pbnId'])
         
         return [str(aa).strip() for aa in (a['pbnId'], a['familyName'], a['givenNames'], a['affiliatedToUnit'], a['employedInUnit'])]
 # }}}
@@ -363,31 +383,6 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
             print("\nBrak publications.json. Uruchom\npython3 swiatowid.py -g")
             sys.exit()
             
-# }}}
-    def _fix_authors(self):# {{{
-        ''' 
-        After we have know authors in the database, we convert such records:
-
-        pbnId=?    , familyName='Krasuski' , givenNames='Adam' , affiliatedToUnit=1 , employedInUnit=1
-            to
-        pbnId=1234 , familyName='Krasuski' , givenNames='Adam' , affiliatedToUnit=1 , employedInUnit=1
-
-        # sqlite3 swiatowid.sqlite "select * from authors order by authorId"
-
-        '''
-
-        #dd(self._publications[115]['authors'][1])
-        for i in self._publications:
-            for a in i['authors']:
-                #if a['pbnId']=='nieznany' and a['affiliatedToUnit']==1:
-                if a['pbnId']=='nieznany':
-                    z=self.s.query("select authorId from authors where familyName=? and givenNames=?", (a['familyName'], a['givenNames']))
-                    try:
-                        a['pbnId']=z[0]['authorId']
-                    except:
-                        pass
-        #dd(self._publications[115]['authors'][1])
-        
 # }}}
     def _process_authors(self):# {{{
         ''' 
@@ -407,7 +402,6 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
         if self.anonymize==1:
             self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
 
-        self._fix_authors()
 
 # }}}
     def _plot_data(self):# {{{
