@@ -12,14 +12,19 @@ import time
 import re
 from hashlib import sha1
 from include import Psql
+from io import StringIO
+# sqlite3 swiatowid.sqlite "select * from publications where publicationId='PBN-R:697472'"
 
-# psql cia -c "select * from  cuvier_artykul_autor";
+# psql cia -c "select * from  journals"
 # psql cia -c "select * from  cuvier_artykuly";
+# psql cia -c "\d cuvier_artykuly";
+# psql cia -c "select * from  cuvier_artykul_autor where jest_redaktorem=1";
 # psql cia -c "SELECT name,pbnId from pracownicy order by pbnId,name";
+# psql cia -c "SELECT * from pracownicy where id=377"
 # sqlite3 swiatowid.sqlite "select * from authors_publications"
 # sqlite3 swiatowid.sqlite "select * from publications where kind='książka'"
 # sqlite3 swiatowid.sqlite "select * from publications where kind='artykuł'"
-# sqlite3 swiatowid.sqlite "select * from publications order by kind"
+
 # sqlite3 swiatowid.sqlite "select * from authors"
 # sqlite3 swiatowid.sqlite "select * from authors_publications"
 # sqlite3 swiatowid.sqlite "select distinct jezyk from publications "
@@ -97,6 +102,7 @@ class Sqlite(): # {{{
 
 # }}}
 
+
 class Swiatowid():
     def __init__(self):# {{{
         self.p=Psql()
@@ -109,6 +115,19 @@ class Swiatowid():
         self._dump_tables()
 
 # }}}
+
+    def _sgsp(self):#{{{
+        self._sqlite_reset()
+        self._read_json()
+        self._process_authors()
+
+        self._sgsp_importer()
+        self._sgsp_pg_publications()
+        self._sgsp_pg_authors()
+        self._sgsp_pg_fix_rozdzialy_isbn()
+
+        #self._sgsp_pbnids()
+#}}}
 
     def _sgsp_importer(self):# {{{
         ''' 
@@ -127,9 +146,26 @@ class Swiatowid():
                 publications.append(r[1])
             for kolejnosc,author in enumerate(json_record['authors']):
                 a=self._author_record(author)
-                authors_publications.append((a[0],p[-1],kolejnosc))
+                authors_publications.append((a[0],p[-1],kolejnosc,0)) # is_editor=0
         self.s.executemany('INSERT INTO publications VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', publications)
-        self.s.executemany('INSERT INTO authors_publications VALUES (?,?,?)', set(authors_publications))
+        self.s.executemany('INSERT INTO authors_publications VALUES (?,?,?,?)', set(authors_publications))
+
+        publications=[]
+        authors_publications=[]
+        for json_record in self._publications: 
+            if(json_record['kind'] == 'Chapter'):
+                #dd(json_record['book'])
+                r=self._publication_record(json_record['book'])
+                p=r[0]
+                publications.append(p)
+                if len(r[1]) > 0:
+                    publications.append(r[1])
+                for kolejnosc,author in enumerate(json_record['book']['editors']):
+                    a=self._author_record(author)
+                    authors_publications.append((a[0],p[-1],kolejnosc,1)) # is_editor=1
+        #dd(authors_publications)
+        self.s.executemany('INSERT INTO authors_publications VALUES (?,?,?,?)', set(authors_publications))
+
 
 # }}}
     def _sgsp_pbnids(self):#{{{
@@ -138,18 +174,23 @@ class Swiatowid():
             print("UPDATE pracownicy SET pbnid={} WHERE nazwisko='{}' AND imie='{}';".format(i['authorId'], i['familyName'], i['givenNames']));
 #}}}
     def _sgsp_pg_publications(self):#{{{
-        print("\c cia")
-        print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstrakt,publicationId) FROM stdin;")
-
+        copy=''
         for i in self.s.query("select * from publications"):
             v=[]
             for vv in i.values():
                 if type(vv)!=str:
                     vv='\\N'
                 v.append(vv)
-            print("\t".join(v))
-        print("\.")
-        print("")
+            copy+="\t".join(v)+"\n"
+        f = StringIO(copy)
+        cols=('tytul','jezyk','rok_publikacji','wersja','volume','issue','strona_od','strona_do','licencja','doi','kind','issn','isbn','parentId','konferencja','scopus','wos','othercontributors','parentTitle','abstrakt','publicationId')
+        self.p.query('delete from cuvier_artykuly')
+        self.p.query('insert into cuvier_artykuly(id) values(1)')
+        # psql cia -c 'insert into cuvier_artykuly(id) values(1)'
+        self.p.cur.copy_from(f, 'cuvier_artykuly', columns=cols)
+        self.p.PSQL.commit()
+        # psql cia -c "select jezyk,strona_od,strona_do  from  cuvier_artykuly where kind='rozdział'";
+
 
 #}}}
     def _sgsp_pg_authors(self):#{{{
@@ -169,12 +210,16 @@ class Swiatowid():
         psql cia -c "select * from pracownicy";
         psql cia -c "alter table cuvier_artykul_autor add column pbnauthor ";
         psql cia -c "alter table pracownicy drop column pbnid";
+
+        psql cia -c "delete from  cuvier_artykul_autor ";
+        psql cia -c "select * from  cuvier_artykul_autor where id_artykulu=2371";
+        psql cia -c "select * from  cuvier_artykuly";
         '''
 
         # print("\c cia")
-        # print("COPY cuvier_artykuly (tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstract,publicationId) FROM stdin;")
-        # PBN-R:254749
-        # psql cia -c "select id,tytul,publicationId  from  cuvier_artykuly where publicationid='PBN-R:254749'";
+        # psql cia -c "select id,parentid, isbn,publicationId  from  cuvier_artykuly where kind='rozdział'";
+        # psql cia -c "select id,isbn,publicationId from cuvier_artykuly where publicationId='PBN-R:254748'";
+        # psql cia -c "\d cuvier_artykuly"
 
         #  id  |                 tytul                  | publicationid 
         # 1644 | Granular Knowledge Discovery Framework | PBN-R:254749
@@ -183,8 +228,7 @@ class Swiatowid():
         #   id  | id_artykulu | id_autora | kolejnosc | obcy | afiliacja | modifier |  modified  | jest_redaktorem | pbnart | pbnauthor 
 
         #  1258 |        2033 |           |           |      |           |          | 2018-10-23 |                 |        |          
-        # TODO: NON SGSP
-
+        self.p.query('delete from cuvier_artykul_autor')
 
         for i in self.s.query("select distinct publicationId as ii from publications"):
             for j in self.s.query("select * from authors_publications WHERE publication_id=? order by kolejnosc", (i['ii'],)):
@@ -209,33 +253,25 @@ class Swiatowid():
                         self.p.query("insert into cuvier_obcy_autorzy(name) values(%s)", (j['author_id'],))
                     z=self.p.query("select id from cuvier_obcy_autorzy where name=%s", (j['author_id'],))
                     aid=z[0]['id']
-                # self.p.querydd('''
-                # INSERT INTO cuvier_artykul_autor(
-                # id_artykulu , id_autora , kolejnosc      , obcy    , afiliacja , jest_redaktorem , pbnart  , pbnauthor) values(
-                # %s          , %s        , %s             , %s      , %s        , %s              , %s      , %s)'''             ,
-                # (article_id , aid       , j['kolejnosc'] , is_obcy , afiliacja , 0               , i['ii'] , j['author_id'])
-                # )
 
                 self.p.query('''
                 INSERT INTO cuvier_artykul_autor(
                 id_artykulu , id_autora , kolejnosc      , obcy    , afiliacja , jest_redaktorem , pbnart  , pbnauthor) values(
                 %s          , %s        , %s             , %s      , %s        , %s              , %s      , %s)'''             ,
-                (article_id , aid       , j['kolejnosc'] , is_obcy , afiliacja , 0               , i['ii'] , j['author_id'])
+                (article_id , aid       , j['kolejnosc'] , is_obcy , afiliacja , j['is_editor']  , i['ii'] , j['author_id'])
                 )
 
 
 #}}}
-
-    def _sgsp(self):#{{{
-        self._sqlite_reset()
-        self._read_json()
-        #self._build_journals_db()
-        self._process_authors()
-        self._sgsp_importer()
-        #self._sgsp_pg_publications()
-        self._sgsp_pg_authors()
-        #self._sgsp_pbnids()
+    def _sgsp_pg_fix_rozdzialy_isbn(self):#{{{
+        for i in self.p.query("select publicationid, parentid from cuvier_artykuly where kind='rozdział'"):
+            isbn=self.p.query("select isbn from cuvier_artykuly where publicationid=%s", (i['parentid'],))
+            if len(isbn) > 0:
+                self.p.query("update cuvier_artykuly set isbn=%s where publicationid=%s", (isbn[0]['isbn'], i['publicationid']))
+        # psql cia -c "select id,parentid, isbn,publicationId  from  cuvier_artykuly where kind='rozdział'";
+        # psql cia -c "select id,isbn,publicationId from cuvier_artykuly where publicationId='PBN-R:254748'";
 #}}}
+
     def _argparse(self):# {{{
         parser = argparse.ArgumentParser(description='Opcje dla swiatowida. Zacznij od opcji -g, gdzie uzyskasz dalsze szczegóły.')
 
@@ -309,7 +345,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
 
         self.s.query("CREATE TABLE publications(tytul,jezyk,rok_publikacji,wersja,volume,issue,strona_od,strona_do,licencja,doi,kind,issn,isbn,parentId,konferencja,scopus,wos,othercontributors,parentTitle,abstrakt,publicationId)")
         self.s.query("CREATE TABLE authors(authorId, familyName, givenNames, affiliatedToUnit, employedInUnit )")
-        self.s.query("CREATE TABLE authors_publications(author_id, publication_id, kolejnosc)")
+        self.s.query("CREATE TABLE authors_publications(author_id, publication_id, kolejnosc, is_editor)")
         self.s.query('''
              CREATE VIEW v AS SELECT a.familyName, a.givenNames, a.authorId, p.parentTitle, p.publicationId, p.kind
              FROM authors a , publications p , authors_publications ap
@@ -373,10 +409,6 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
                 authors[a[0]]=tuple(a)
         self.s.executemany('INSERT INTO authors VALUES (?,?,?,?,?)', authors.values())
 
-        if self.anonymize==1:
-            self.s.query("UPDATE authors set familyName=authorId, givenNames='anonim'")
-
-
 # }}}
     def _plot_data(self):# {{{
         return
@@ -435,10 +467,11 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
         except:
             pages=[0, 0]
 
-        try:
-            a['journal']['issn']=a['journal']['eissn']
-        except:
-            pass
+        if 'issn' not in a['journal']:
+            try:
+                a['journal']['issn']=a['journal']['eissn']
+            except:
+                pass
 
         record=[]
         record.append(a['sanitizedTitle'].strip())
@@ -500,6 +533,7 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
             self.isbn+=1
         a['isbn']=re.sub("[^\w]", "", a['isbn'])
 
+
         record=[]
         record.append(a['sanitizedTitle'].strip())
         try:
@@ -531,7 +565,12 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
             record.append(a['otherContributors'])
         except:
             record.append(None)
-        record.append(a['sanitizedTitle'].strip())
+        title=a['sanitizedTitle'].strip()
+        title=re.sub("[„”]", "", title)
+        title=re.sub("^\., ", "", title)
+        title=re.sub("\&#34;", "", title)
+        record.append(title)
+
         try:
             record.append(a['abstracts'][0]['value'])
         except:
@@ -544,6 +583,18 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
     def _chapter(self,a):#{{{
         # psql cia -c "\d cuvier_artykuly";
 
+        try:
+            a['pages'].strip()
+            a['pages'].replace(" ", "")
+            pages=a['pages'].split("-")
+        except:
+            pass
+        try:
+            i=pages[1]
+        except:
+            pages=[0, 0]
+
+
         record=[]
         record.append(a['sanitizedTitle'].strip())
         record.append(a['lang'].strip())
@@ -551,8 +602,8 @@ Jeżeli zmienne istnieją, swiatowid przejdzie do dalszej procedury.
         record.append(None) # a['wersja'].strip())
         record.append(None) # a['volume'].strip())
         record.append(None) # a['issue'].strip())
-        record.append(None) # a['strona_od'].strip())
-        record.append(None) # a['strona_do'].strip())
+        record.append(pages[0])
+        record.append(pages[1])
         record.append(None) # a['licencja'].strip())
         record.append(a['doi'].strip())
         record.append('rozdział')
