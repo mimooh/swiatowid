@@ -14,5 +14,3 @@ linux + python (opcjonalnie + php).
 
 Podziękowania dla Piotra Chodnickiego z https://punktacjaczasopism.pl za bazę danych 
 MNiSW. 
-
-<a href=http://www.inf.sgsp.edu.pl/~mimooh/swiatowid/plot.html>Demo systemu</a>.
