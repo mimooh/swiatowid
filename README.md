@@ -1,4 +1,7 @@
 # swiatowid
+
+Światowid nie jest już rozwijany
+
 ![alt text](_swiatowid.png)
 
 Światowid pobiera dane instytucji z systemu https://pbn-ms.opi.org.pl. 
